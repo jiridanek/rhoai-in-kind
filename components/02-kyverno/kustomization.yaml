@@ -5,4 +5,4 @@ kind: Kustomization
 
 namespace: argocd
 resources:
-  - kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.11.1/install.yaml
+  - https://github.com/kyverno/kyverno/releases/download/v1.11.1/install.yaml

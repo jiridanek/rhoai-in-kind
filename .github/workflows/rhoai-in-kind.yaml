@@ -28,3 +28,19 @@ jobs:
 
       - name: Deploy fake CRDs
         run: kubectl apply -k components/crds
+
+      - run: kubectl create namespace redhat-ods-applications
+
+      - name: Install KF Pipelines
+        run: |
+          kubectl create namespace redhat-ods-applications
+          kubectl apply -f components/03-kf-pipelines.yaml
+          
+          PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          export ARGOCD_OPTS='--insecure --port-forward --port-forward-namespace argocd'
+          argocd login --insecure --username admin --password $PASSWORD
+          argocd cluster add kind-kind --core --yes
+          argocd app sync kf-pipelines
+          
+          # wait for argocd to sync the application!
+          #kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=controller-manager -n redhat-ods-applications --timeout=120s

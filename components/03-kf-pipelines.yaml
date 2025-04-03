@@ -1,0 +1,76 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: redhat-ods-applications
+  namespace: argocd
+spec:
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: '*'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+---
+# https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kf-pipelines
+  namespace: argocd
+spec:
+  project: redhat-ods-applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redhat-ods-applications
+  source:
+    repoURL: https://github.com/opendatahub-io/data-science-pipelines-operator.git
+    path: config/overlays/rhoai
+    targetRevision: HEAD
+    kustomize:
+      patches:
+        - target:
+            group: apps
+            version: v1
+            kind: Deployment
+            name: data-science-pipelines-operator-controller-manager
+          patch: |-
+            - op: replace
+              path: /spec/template/spec/securityContext/runAsNonRoot
+              value: false
+        - target:
+            group: apps
+            version: v1
+            kind: Deployment
+            name: data-science-pipelines-operator-controller-manager
+          # value: quay.io/openshift/origin-oauth-proxy@sha256:1ece77d14a685ef2397c3a327844eea45ded00c95471e9e333e35ef3860b1895
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: data-science-pipelines-operator-controller-manager
+              namespace: redhat-ods-applications
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: manager
+                    env:
+                      - name: IMAGES_MLMDENVOY
+                        value: quay.io/maistra/proxyv2-ubi8:2.5.0
+                      - name: IMAGES_OAUTHPROXY
+                        value: localhost/oauth-proxy:myversion
+                      - name: IMAGES_MARIADB
+                        value: quay.io/fedora/mariadb-103:latest
+
+# The below patch would work too, but the above is easier to keep up-to-date
+# NOTE: in either case there would be _no_ warning if container or env variables are ever renamed in kf-pipelines
+#
+#          patch: |-
+#            - op: add
+#              path: /spec/template/spec/containers/0/env/-
+#              value:
+#                name: IMAGES_APISERVER
+#                value: ...
