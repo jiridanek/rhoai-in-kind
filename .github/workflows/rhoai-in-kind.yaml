@@ -20,3 +20,6 @@ jobs:
         run: |
           kubectl apply -k components/01-argocd
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
+
+      - name: Deploy fake CRDs
+        run: kubectl apply -k components/crds

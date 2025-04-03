@@ -1,0 +1,23 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    crd/fake: "true"
+  name: routes.route.openshift.io
+spec:
+  group: route.openshift.io
+  names:
+    kind: Route
+    listKind: RouteList
+    singular: route
+    plural: routes
+  scope: Namespaced
+  versions:
+    - name: v1
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      served: true
+      storage: true
