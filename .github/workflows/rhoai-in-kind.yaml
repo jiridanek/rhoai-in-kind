@@ -1,0 +1,17 @@
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  rhoai-in-kind:
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Kubernetes KinD Cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.27.0
+          cluster_name: kind
