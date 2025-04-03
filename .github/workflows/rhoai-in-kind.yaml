@@ -15,3 +15,8 @@ jobs:
         with:
           version: v0.27.0
           cluster_name: kind
+
+      - name: Install ArgoCD
+        run: |
+          kubectl apply -k components/01-argocd
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
