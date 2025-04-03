@@ -1,0 +1,8 @@
+---
+# https://kyverno.io/docs/installation/methods/#install-kyverno-using-yamls
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+resources:
+  - kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.11.1/install.yaml
