@@ -3,7 +3,7 @@
 ```shell
 podman machine set --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
-kind create cluster
+kind create cluster --config components/00-kind-cluster.yaml
 
 kubectl apply -k components/01-argocd
 
