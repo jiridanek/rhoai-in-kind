@@ -1,0 +1,172 @@
+# There _has_ to be `status:` and there have to be conditions, otherwise the dashboard does not load
+
+apiVersion: dscinitialization.opendatahub.io/v1
+kind: DSCInitialization
+metadata:
+  name: default-dsci
+spec:
+  applicationsNamespace: redhat-ods-applications
+  monitoring:
+    managementState: Managed
+    namespace: redhat-ods-monitoring
+  serviceMesh:
+    auth:
+      audiences:
+        - 'https://kubernetes.default.svc'
+    controlPlane:
+      metricsCollection: Istio
+      name: data-science-smcp
+      namespace: istio-system
+    managementState: Managed
+  trustedCABundle:
+    customCABundle: ''
+    managementState: Managed
+status:
+  conditions:
+    - lastHeartbeatTime: '2024-10-01T04:49:56Z'
+      lastTransitionTime: '2024-09-30T15:24:01Z'
+      message: Reconcile completed successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: ReconcileComplete
+  phase: Ready
+  release:
+    name: OpenShift AI Self-Managed
+    version: 2.13.0
+
+---
+apiVersion: datasciencecluster.opendatahub.io/v1
+kind: DataScienceCluster
+metadata:
+  labels:
+    app.kubernetes.io/created-by: rhods-operator
+    app.kubernetes.io/instance: default-dsc
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: datasciencecluster
+    app.kubernetes.io/part-of: rhods-operator
+  name: default-dsc
+spec:
+  components:
+    codeflare:
+      managementState: Managed
+    kserve:
+      managementState: Managed
+      serving:
+        ingressGateway:
+          certificate:
+            type: OpenshiftDefaultIngress
+        managementState: Managed
+        name: knative-serving
+    trustyai:
+      managementState: Removed
+    ray:
+      managementState: Managed
+    kueue:
+      managementState: Managed
+    workbenches:
+      managementState: Managed
+    dashboard:
+      managementState: Managed
+    modelmeshserving:
+      managementState: Managed
+    datasciencepipelines:
+      managementState: Managed
+    trainingoperator:
+      managementState: Removed
+status:
+  components: {}
+  conditions:
+    - lastHeartbeatTime: '2024-10-01T04:50:20Z'
+      lastTransitionTime: '2024-09-30T15:30:24Z'
+      message: DataScienceCluster resource reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: ReconcileComplete
+    - lastHeartbeatTime: '2024-10-01T04:50:20Z'
+      lastTransitionTime: '2024-09-30T15:30:24Z'
+      message: DataScienceCluster resource reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: Available
+    - lastHeartbeatTime: '2024-10-01T04:50:20Z'
+      lastTransitionTime: '2024-09-30T15:30:24Z'
+      message: DataScienceCluster resource reconciled successfully
+      reason: ReconcileCompleted
+      status: 'False'
+      type: Progressing
+    - lastHeartbeatTime: '2024-10-01T04:50:20Z'
+      lastTransitionTime: '2024-09-30T15:24:31Z'
+      message: DataScienceCluster resource reconciled successfully
+      reason: ReconcileCompleted
+      status: 'False'
+      type: Degraded
+    - lastHeartbeatTime: '2024-10-01T04:50:20Z'
+      lastTransitionTime: '2024-09-30T15:30:24Z'
+      message: DataScienceCluster resource reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: Upgradeable
+    - lastHeartbeatTime: '2024-10-01T04:49:46Z'
+      lastTransitionTime: '2024-09-30T15:25:52Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: dashboardReady
+    - lastHeartbeatTime: '2024-10-01T04:49:48Z'
+      lastTransitionTime: '2024-09-30T15:26:04Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: workbenchesReady
+    - lastHeartbeatTime: '2024-10-01T04:49:52Z'
+      lastTransitionTime: '2024-09-30T15:26:27Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: model-meshReady
+    - lastHeartbeatTime: '2024-10-01T04:49:53Z'
+      lastTransitionTime: '2024-09-30T15:26:48Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: data-science-pipelines-operatorReady
+    - lastHeartbeatTime: '2024-10-01T04:50:06Z'
+      lastTransitionTime: '2024-09-30T15:27:32Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: kserveReady
+    - lastHeartbeatTime: '2024-10-01T04:50:10Z'
+      lastTransitionTime: '2024-09-30T15:29:35Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: kueueReady
+    - lastHeartbeatTime: '2024-10-01T04:50:10Z'
+      lastTransitionTime: '2024-09-30T15:30:15Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: codeflareReady
+    - lastHeartbeatTime: '2024-10-01T04:50:18Z'
+      lastTransitionTime: '2024-09-30T15:30:22Z'
+      message: Component reconciled successfully
+      reason: ReconcileCompleted
+      status: 'True'
+      type: rayReady
+  installedComponents:
+    codeflare: true
+    kserve: true
+    trustyai: false
+    ray: true
+    kueue: true
+    data-science-pipelines-operator: true
+    workbenches: true
+    model-registry-operator: false
+    model-mesh: true
+    dashboard: true
+    trainingoperator: false
+  phase: Ready
+  release:
+    name: OpenShift AI Self-Managed
+    version: 2.13.0

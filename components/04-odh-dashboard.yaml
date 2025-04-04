@@ -61,3 +61,20 @@ metadata:
 data:
   cookie_secret: WTB4TlVXZGFPWGRqZDJwd01pdFJaa2wxVlZvM2R6MDk=
 type: Opaque
+---
+# https://gateway-api.sigs.k8s.io/guides/tls/
+# https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-sni-passthrough/
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: rhods-dashboard
+  namespace: redhat-ods-applications
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+  hostnames: ["rhods-dashboard.localhost"]
+  rules:
+    - backendRefs:
+        - name: rhods-dashboard
+          port: 8443

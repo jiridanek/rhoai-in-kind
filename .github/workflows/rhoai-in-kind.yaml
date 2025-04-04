@@ -32,81 +32,24 @@ jobs:
       # https://ryandeangraham.medium.com/istio-gateway-api-nodeport-c598a21c4c95
       - name: Install Istio
         run: |
+          # TLSRoute is considered "experimental"
+          # https://github.com/kubernetes-sigs/gateway-api/issues/2643
           kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
-          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd?ref=v1.2.1" | kubectl apply -f -; }
+          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.2.1" | kubectl apply -f -; }
 
           curl -L https://istio.io/downloadIstio | sh -
-          istio-${ISTIO_VERSION}/bin/istioctl install --set profile=minimal -y
+          istio-${ISTIO_VERSION}/bin/istioctl install --set values.pilot.env.PILOT_ENABLE_ALPHA_GATEWAY_API=true --set profile=minimal -y
 
-          kubectl apply -f - <<EOF
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            annotations:
-              networking.istio.io/service-type: NodePort
-            labels:
-              gateway.istio.io/managed: istio.io-gateway-controller
-              gateway.networking.k8s.io/gateway-name: gateway
-            name: gateway-istio
-            namespace: istio-system
-          spec:
-            ipFamilies:
-              - IPv4
-            ipFamilyPolicy: PreferDualStack
-            ports:
-              - appProtocol: tcp
-                name: status-port
-                nodePort: 30207
-                port: 15021
-                protocol: TCP
-                targetPort: 15021
-              - appProtocol: http
-                name: http
-                nodePort: 32751
-                port: 80
-                protocol: TCP
-                targetPort: 80
-              - appProtocol: https
-                name: https
-                nodePort: 30730
-                port: 443
-                protocol: TCP
-                targetPort: 443
-            selector:
-              gateway.networking.k8s.io/gateway-name: gateway
-            sessionAffinity: None
-            type: NodePort
-          ---
-          apiVersion: gateway.networking.k8s.io/v1
-          kind: Gateway
-          metadata:
-            annotations:
-              networking.istio.io/service-type: NodePort
-            name: gateway
-            namespace: istio-system
-          spec:
-            gatewayClassName: istio
-            listeners:
-            - name: http
-              port: 80
-              protocol: HTTP
-              allowedRoutes:
-                namespaces:
-                  from: All
-            - name: https
-              port: 443
-              protocol: HTTPS
-              allowedRoutes:
-                namespaces:
-                  from: All
-          EOF
+          kubectl apply -f components/06-gateway.yaml
 
           kubectl wait -n istio-system --for=condition=programmed gateways.gateway.networking.k8s.io gateway
           export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io gateway -n istio-system -ojsonpath='{.status.addresses[0].value}')
         env:
           ISTIO_VERSION: 1.25.1
           TARGET_ARCH: x86_64
+
+      - name: Setup Gateway
+        run: kubectl apply -f components/06-gateway.yaml
 
       - name: Install ArgoCD
         run: |
@@ -143,8 +86,14 @@ jobs:
           kubectl label node --all node-role.kubernetes.io/master=
           timeout 30s bash -c 'while ! kubectl apply -k components/05-ca-operator; do sleep 1; done'
 
+      - name: Install fake oauth-server
+        run: kubectl apply -k components/oauth-server
+
       - name: Install ODH Dashboard
         run: |
           kubectl apply -f components/04-odh-dashboard.yaml
           
           argocd app sync odh-dashboard
+
+      - name: Set fake DSC and DSCI
+        run: kubectl apply -f components/07-dsc-dsci.yaml

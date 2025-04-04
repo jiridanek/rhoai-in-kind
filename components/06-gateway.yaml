@@ -1,0 +1,81 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    networking.istio.io/service-type: NodePort
+  labels:
+    gateway.istio.io/managed: istio.io-gateway-controller
+    gateway.networking.k8s.io/gateway-name: gateway
+  name: gateway-istio
+  namespace: istio-system
+spec:
+  ipFamilies:
+    - IPv4
+  ipFamilyPolicy: PreferDualStack
+  ports:
+    - appProtocol: tcp
+      name: status-port
+      nodePort: 30207
+      port: 15021
+      protocol: TCP
+      targetPort: 15021
+    - appProtocol: http
+      name: http
+      nodePort: 32751
+      port: 80
+      protocol: TCP
+      targetPort: 80
+    - appProtocol: https
+      name: https
+      nodePort: 30730
+      port: 443
+      protocol: TCP
+      targetPort: 443
+  selector:
+    gateway.networking.k8s.io/gateway-name: gateway
+  sessionAffinity: None
+  type: NodePort
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    networking.istio.io/service-type: NodePort
+  name: gateway
+  namespace: istio-system
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: http
+      hostname: "*.localhost"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      hostname: "*.localhost"
+      port: 443
+      protocol: TLS
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+#apiVersion: gateway.networking.k8s.io/v1alpha3
+#kind: BackendTLSPolicy
+#metadata:
+#  name: rhods-dashboard-backend-tls-policy
+#  namespace: redhat-ods-applications
+#spec:
+#  targetRefs:
+#    - name: rhods-dashboard
+#      port: 8443
+#  validation:
+#    caCertificateRefs:
+#      kind: Configmap
+#      name:
+#  options:
+#

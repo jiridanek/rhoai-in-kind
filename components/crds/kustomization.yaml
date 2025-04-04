@@ -6,3 +6,5 @@ resources:
   - route.yaml
   - servicemonitor.yaml
   - consolelink.yaml
+  - dsc.yaml
+  - dsci.yaml

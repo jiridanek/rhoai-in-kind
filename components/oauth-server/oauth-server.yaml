@@ -1,0 +1,125 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oauth-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth-server
+  namespace: oauth-server
+  labels:
+    app: oauth-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth-server
+  template:
+    metadata:
+      labels:
+        app: oauth-server
+    spec:
+      containers:
+        - name: oauth-server
+          image: quay.io/jdanek/oauth-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: username
+              value: kubernetes-admin
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+#          readinessProbe:
+#            httpGet:
+#              path: /health
+#              port: 8080
+#            initialDelaySeconds: 10
+#            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth-server
+  namespace: oauth-server
+spec:
+  selector:
+    app: oauth-server
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: oauth-server
+  namespace: oauth-server
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+  hostnames: ["oauth-server.localhost"]
+  rules:
+    - backendRefs:
+        - name: oauth-server
+          port: 8080
+
+## http://10.89.0.3/auth?approval_prompt=force&client_id=system%3Aserviceaccount%3Ajdanek%3Ads-pipeline-ui-sample&redirect_uri=https%3A%2F%2Flocalhost%3A8443%2Foauth%2Fcallback&response_type=code&scope=user%3Ainfo+user%3Acheck-access&state=fa2cbd33489ff7372ec1dd9e5af42277%3A%2F
+#
+## https://localhost:8443/oauth/callback?code=6393217907377824894&state=fa2cbd33489ff7372ec1dd9e5af42277%3A%2F
+#
+## │ oauth-proxy 2025/03/02 21:47:21 oauthproxy.go:661: error redeeming code (client:127.0.0.1:52172): Post "http://oauth-server.oauth-server.svc/token": context deadline exceeded (Client.Timeout exceeded while awaiting headers)      │
+#
+#
+#oauth-proxy 2025/03/02 21:54:50 provider.go:129: Defaulting client-id to system:serviceaccount:jdanek:ds-pipeline-ui-sample
+#oauth-proxy 2025/03/02 21:54:50 provider.go:134: Defaulting client-secret to service account token /var/run/secrets/kubernetes.io/serviceaccount/token
+#oauth-proxy 2025/03/02 21:54:50 provider.go:358: Delegation of authentication and authorization to OpenShift is enabled for bearer tokens and client certificates.
+#ds-pipeline-ui Warning: Ignoring extra certs from `/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`, load failed: error:80000002:system library::No such file or directory
+#oauth-proxy 2025/03/02 21:54:52 oauthproxy.go:210: mapping path "/" => upstream "http://localhost:3000/"
+#oauth-proxy 2025/03/02 21:54:52 oauthproxy.go:231: compiled skip-auth-regex => "'(^/metrics|^/apis/v1beta1/healthz)'"
+#oauth-proxy 2025/03/02 21:54:52 oauthproxy.go:237: OAuthProxy configured for  Client ID: system:serviceaccount:jdanek:ds-pipeline-ui-sample
+#oauth-proxy 2025/03/02 21:54:52 oauthproxy.go:247: Cookie settings: name:_oauth_proxy secure(https):true httponly:true expiry:168h0m0s domain:<default> samesite: refresh:disabled
+#oauth-proxy 2025/03/02 21:54:52 http.go:64: HTTP: listening on 127.0.0.1:4180
+#  oauth-proxy I0302 21:54:52.419607       1 dynamic_serving_content.go:132] "Starting controller" name="serving::/etc/tls/private/tls.crt::/etc/tls/private/tls.key"
+#oauth-proxy 2025/03/02 21:54:52 http.go:110: HTTPS: listening on [::]:8443
+#oauth-proxy 2025/03/02 21:56:31 server.go:3217: http: TLS handshake error from 127.0.0.1:56124: remote error: tls: unknown certificate
+#oauth-proxy 2025/03/02 21:57:11 server.go:3217: http: TLS handshake error from 127.0.0.1:32864: remote error: tls: unknown certificate
+#oauth-proxy 2025/03/02 21:57:13 provider.go:671: 403 GET https://10.96.0.1/apis/user.openshift.io/v1/users/~ {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"users.user.openshift.io \"~\" is forbidden: User \"system:anonymous\" cannot get resource \"users\" in API group \"user.openshift.io\" at the cluster scope","reason":"Forbidden","details":{"name":"~","group":"user.openshift.io","kind":"users"},"code":403}
+#oauth-proxy 2025/03/02 21:57:13 oauthproxy.go:661: error redeeming code (client:127.0.0.1:32866): unable to retrieve email address for user from token: got 403 {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"users.user.openshift.io \"~\" is forbidden: User \"system:anonymous\" cannot get resource \"users\" in API group \"user.openshift.io\" at the cluster scope","reason":"Forbidden","details":{"name":"~","group":"user.openshift.io","kind":"users"},"code":403}
+#oauth-proxy 2025/03/02 21:57:13 oauthproxy.go:452: ErrorPage 500 Internal Error Internal Error
+#
+#
+#
+#
+#
+#│ oauth-proxy 2025/03/02 22:29:14 provider.go:671: 403 POST https://10.96.0.1/apis/authorization.openshift.io/v1/subjectaccessreviews {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"subjectaccessrevi │
+#│ ews.authorization.openshift.io is forbidden: User \"system:anonymous\" cannot create resource \"subjectaccessreviews\" in API group \"authorization.openshift.io\" at the cluster scope","reason":"Forbidden","details":{"group":"au │
+#  │ thorization.openshift.io","kind":"subjectaccessreviews"},"code":403}                                                                                                                                                                 │
+#│ oauth-proxy 2025/03/02 22:29:14 oauthproxy.go:661: error redeeming code (client:127.0.0.1:54876): got 403 {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"subjectaccessreviews.authorization.openshif │
+#│ t.io is forbidden: User \"system:anonymous\" cannot create resource \"subjectaccessreviews\" in API group \"authorization.openshift.io\" at the cluster scope","reason":"Forbidden","details":{"group":"authorization.openshift.io", │
+#  │ "kind":"subjectaccessreviews"},"code":403}
+#
+#
+#  │ ds-pipeline-ui [HPM] Error occurred while trying to proxy request /apis/v2beta1/pipelines?page_token=&page_size=10&sort_by=created_at%20desc&filter= from localhost:8443 to https://ds-pipeline-sample.jdanek.svc.cluster.local:8888 │
+#
+#
+#
+## pipeline server
+#
+#│ oauth-proxy 2025/03/02 23:03:01 oauthproxy.go:172: Failed to initialize Reverse Proxy: certificate authority file (/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt) could not be read - open /var/run/secrets/kubernete │
+#│ s.io/serviceaccount/service-ca.crt: no such file or directory                                                                                                                                                                        │
+#
+#
+#  │         - --upstream-ca=/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt                                                                                                                                                 │
+#
+#
+## https://github.com/lucferbux/odh-dashboard/blob/fa065352e28fd3a6c9b0d222c90620bfeefdf75f/backend/src/server.ts#L46
+#
