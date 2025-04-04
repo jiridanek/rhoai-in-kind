@@ -47,7 +47,8 @@ jobs:
           kubectl apply -f components/03-kf-pipelines.yaml
 
           #PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-          #export ARGOCD_OPTS='--insecure --port-forward --port-forward-namespace argocd'
+          #export ARGOCD_OPTS='--port-forward-namespace argocd'
+          kubectl config set-context --current --namespace=argocd
           argocd login --core
           argocd cluster add kind-kind --yes
           argocd app sync kf-pipelines
