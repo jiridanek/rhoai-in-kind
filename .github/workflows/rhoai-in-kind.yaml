@@ -42,13 +42,16 @@ jobs:
 
       - run: kubectl create namespace redhat-ods-applications
 
+      - name: Login to ArgoCD
+        run: |
+          kubectl config set-context --current --namespace=argocd
+          argocd login --core
+          argocd cluster add kind-kind --yes
+
       - name: Install KF Pipelines
         run: |
           kubectl apply -f components/03-kf-pipelines.yaml
 
-          kubectl config set-context --current --namespace=argocd
-          argocd login --core
-          argocd cluster add kind-kind --yes
           argocd app sync kf-pipelines
           
           # wait for argocd to sync the application
