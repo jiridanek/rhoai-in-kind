@@ -24,7 +24,7 @@ jobs:
       - name: Install Kyverno
         run: |
           kubectl create -k components/02-kyverno
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=kyverno -n kyverno --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
 
       - name: Deploy fake CRDs
         run: kubectl apply -k components/crds
