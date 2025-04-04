@@ -1,0 +1,63 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: redhat-ods-applications
+  namespace: argocd
+spec:
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: '*'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+---
+# https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: odh-dashboard
+  namespace: argocd
+spec:
+  project: redhat-ods-applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redhat-ods-applications
+  source:
+    repoURL: https://github.com/opendatahub-io/odh-dashboard.git
+    path: manifests/rhoai/onprem
+    targetRevision: HEAD
+    kustomize:
+      images:
+        - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
+      replicas:
+        - name: rhods-dashboard
+          count: 1
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: dashboard-oauth-client-generated
+  namespace: redhat-ods-applications
+  labels:
+    app: rhods-dashboard
+    app.kubernetes.io/part-of: rhods-dashboard
+    app.opendatahub.io/rhods-dashboard: 'true'
+data:
+  secret: ODlFc0g0ckNsRVRETFZRN0VjaWlSUlBBbkxMY2pUMnU=
+type: Opaque
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: dashboard-oauth-config-generated
+  namespace: redhat-ods-applications
+  labels:
+    app: rhods-dashboard
+    app.kubernetes.io/part-of: rhods-dashboard
+    app.opendatahub.io/rhods-dashboard: 'true'
+data:
+  cookie_secret: WTB4TlVXZGFPWGRqZDJwd01pdFJaa2wxVlZvM2R6MDk=
+type: Opaque

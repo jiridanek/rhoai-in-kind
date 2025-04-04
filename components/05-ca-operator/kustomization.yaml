@@ -1,0 +1,14 @@
+# https://github.com/openshift/service-ca-operator
+
+# kubectl create namespace openshift-config-manage
+# kubectl label node --all node-role.kubernetes.io/master=
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/operator/v1/zz_generated.crd-manifests/0000_50_service-ca_02_servicecas.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/config/v1/zz_generated.crd-manifests/0000_00_cluster-version-operator_01_clusteroperators.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/payload-manifests/crds/0000_10_config-operator_01_infrastructures-Default.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/payload-command/empty-resources/0000_05_config-operator_02_infrastructure.cr.yaml
+  - manifests.yaml

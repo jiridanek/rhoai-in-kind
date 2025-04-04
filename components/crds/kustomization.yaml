@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - route.yaml
   - servicemonitor.yaml
+  - consolelink.yaml

@@ -56,3 +56,14 @@ jobs:
           
           # wait for argocd to sync the application
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
+
+      - name: Install Service CA Operator
+        run: |
+          kubectl label node --all node-role.kubernetes.io/master=
+          timeout 30s bash -c 'while ! kubectl apply -k components/05-ca-operator; do sleep 1; done'
+
+      - name: Install ODH Dashboard
+        run: |
+          kubectl apply -f components/04-odh-dashboard.yaml
+          
+          argocd app sync odh-dashboard
