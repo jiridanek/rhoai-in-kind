@@ -1,0 +1,190 @@
+# https://github.com/kubevirt/vm-console-proxy/releases/latest/download/vm-console-proxy.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-extension
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apiserver
+  namespace: api-extension
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wardle:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: apiserver
+    namespace: api-extension
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: aggregated-apiserver-clusterrole
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources: ['prioritylevelconfigurations', 'flowschemas']
+    verbs: ['list', 'watch']
+---
+# namespaces is forbidden: User "system:serviceaccount:kubevirt:apiserver" cannot create resource "namespaces" in API group "" at the cluster scope
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: openshift-resources-manager-clusterrole
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sample-apiserver-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aggregated-apiserver-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: apiserver
+    namespace: api-extension
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshift-resources-manager-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openshift-resources-manager-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: apiserver
+    namespace: api-extension
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wardle-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: apiserver
+    namespace: api-extension
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vm-console-proxy
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: apiserver
+    namespace: api-extension
+---
+apiVersion: v1
+kind: Service
+metadata:
+  #annotations:
+  #  service.beta.openshift.io/serving-cert-secret-name: vm-console-proxy-cert
+  name: apiserver
+  namespace: api-extension
+spec:
+  ports:
+    - port: 443
+      targetPort: api
+  selector:
+    vm-console-proxy.kubevirt.io: vm-console-proxy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: vm-console-proxy
+    vm-console-proxy.kubevirt.io: vm-console-proxy
+  name: apiserver
+  namespace: api-extension
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      vm-console-proxy.kubevirt.io: vm-console-proxy
+  template:
+    metadata:
+      labels:
+        name: vm-console-proxy
+        vm-console-proxy.kubevirt.io: vm-console-proxy
+    spec:
+      containers:
+        - args: ["--v=7"]
+          image: quay.io/jdanek/api-extension:latest
+          imagePullPolicy: IfNotPresent
+          name: console
+          ports:
+            - containerPort: 443
+              name: api
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: apiserver
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+  name: v1.user.openshift.io
+spec:
+  insecureSkipTLSVerify: true
+  group: user.openshift.io
+  groupPriorityMinimum: 2000
+  version: v1
+  versionPriority: 10
+  service:
+    name: apiserver
+    namespace: api-extension
+    port: 443
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+  name: v1.project.openshift.io
+spec:
+  insecureSkipTLSVerify: true
+  group: project.openshift.io
+  groupPriorityMinimum: 2000
+  version: v1
+  versionPriority: 10
+  service:
+    name: apiserver
+    namespace: api-extension
+    port: 443

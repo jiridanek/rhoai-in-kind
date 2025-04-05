@@ -64,6 +64,9 @@ jobs:
       - name: Deploy fake CRDs
         run: kubectl apply -k components/crds
 
+      - name: Deploy api-extension
+        run: kubectl apply -k components/api-extension
+
       - run: kubectl create namespace redhat-ods-applications
 
       - name: Login to ArgoCD
