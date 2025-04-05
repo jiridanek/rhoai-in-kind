@@ -25,9 +25,13 @@ jobs:
         uses: helm/kind-action@v1
         with:
           version: v0.27.0
+          # Dashboard tests fail on k8s 1.32
+          # https://hub.docker.com/r/kindest/node/tags
+          node_image: "docker.io/kindest/node:v1.31.6"
           cluster_name: kind
           config: components/00-kind-cluster.yaml
 
+      # https://istio.io/latest/docs/setup/platform-setup/kind/
       # https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#setup
       # https://ryandeangraham.medium.com/istio-gateway-api-nodeport-c598a21c4c95
       - name: Install Istio
@@ -100,3 +104,25 @@ jobs:
 
       - name: Set fake DSC and DSCI
         run: kubectl apply -f components/07-dsc-dsci.yaml
+
+      - name: "Install local-path provisioner"
+        run: |
+          set -Eeuxo pipefail
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
+          kubectl wait deployments --all --namespace=local-path-storage --for=condition=Available --timeout=100s
+          # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/
+          kubectl get storageclass
+          #kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+          # dashboard tests expect a storage class standard-csi
+          kubectl apply -f - <<EOF
+          ---
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+            name: standard-csi
+          provisioner: rancher.io/local-path
+          reclaimPolicy: Delete
+          volumeBindingMode: WaitForFirstConsumer
+          EOF

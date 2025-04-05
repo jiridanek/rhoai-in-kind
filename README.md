@@ -64,7 +64,7 @@ Out-of-date, see .github/workflows/rhoai-in-kind.yaml
 ```shell
 podman machine set --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
-kind create cluster --config components/00-kind-cluster.yaml
+kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
 
 kubectl apply -k components/01-argocd
 
