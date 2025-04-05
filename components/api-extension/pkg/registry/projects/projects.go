@@ -20,10 +20,14 @@ import (
 	"context"
 	"fmt"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"net/http"
 	"strings"
+	"sync"
+
 	//"sync"
 	"time"
 
@@ -53,8 +57,8 @@ var (
 	_ rest.Updater         = &REST{}
 	_ rest.Creater         = &REST{}
 	_ rest.GracefulDeleter = &REST{}
-	//_ rest.Watcher         = &REST{}
-	_ rest.Patcher = &REST{}
+	_ rest.Watcher         = &REST{}
+	_ rest.Patcher         = &REST{}
 )
 
 // Define constants for label and annotation prefixes
@@ -202,7 +206,7 @@ func (r *REST) List(ctx context.Context, options *metainternalversion.ListOption
 			Kind:       "ProjectList",
 		},
 		ListMeta: metav1.ListMeta{
-			ResourceVersion: "v1",
+			ResourceVersion: namespaces.GetResourceVersion(),
 		},
 		Items: []projectv1.Project{},
 	}
@@ -238,10 +242,150 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 	return deletedProject, true, nil
 }
 
-//// Watch sets up a watch on HelmReleases, filters them based on sourceRef and prefix, and converts events to Applications
-//func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptions) (watch.Interface, error) {
-//	return nil, fmt.Errorf("no watch, bro %+v", options)
-//}
+// customWatcher wraps the original watcher and filters/converts events
+type customWatcher struct {
+	resultChan chan watch.Event
+	stopChan   chan struct{}
+	stopOnce   sync.Once
+}
+
+// Stop terminates the watch
+func (cw *customWatcher) Stop() {
+	cw.stopOnce.Do(func() {
+		close(cw.stopChan)
+	})
+}
+
+// ResultChan returns the event channel
+func (cw *customWatcher) ResultChan() <-chan watch.Event {
+	return cw.resultChan
+}
+
+// Watch sets up a watch on Namespace, and converts events to Project
+func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptions) (watch.Interface, error) {
+	// https://github.com/cozystack/cozystack/blob/8267072da24a8220f9e5d8551695b00d6bd576b6/pkg/registry/apps/application/rest.go#L549
+	//var resourceName string
+	//if requestInfo, ok := request.RequestInfoFrom(ctx); ok {
+	//	resourceName = requestInfo.Name
+	//}
+	var out metav1.ListOptions
+	err := metainternalversion.Convert_internalversion_ListOptions_To_v1_ListOptions(options, &out, nil)
+	//out.APIVersion = projectv1.GroupVersion.String()
+	//out.Kind = "Namespace"
+	//metaOptions := metav1.ListOptions{
+	//	Watch:                true,
+	//	ResourceVersion:      options.ResourceVersion,
+	//	FieldSelector:        options.FieldSelector.String(),
+	//	LabelSelector:        options.LabelSelector.String(),
+	//	SendInitialEvents:    options.SendInitialEvents,
+	//	ResourceVersionMatch: options.ResourceVersionMatch,
+	//	TimeoutSeconds:       options.TimeoutSeconds,
+	//	Limit:                options.Limit,
+	//}
+	namespaceWatcher, err := r.kubeClient.CoreV1().Namespaces().Watch(ctx, out)
+	if err != nil {
+		klog.Errorf("Error setting up watch for HelmReleases: %v", err)
+		return nil, err
+	}
+
+	// Create a custom watcher to transform events
+	customW := &customWatcher{
+		resultChan: make(chan watch.Event),
+		stopChan:   make(chan struct{}),
+	}
+
+	go func() {
+		defer close(customW.resultChan)
+		for {
+			select {
+			case event, ok := <-namespaceWatcher.ResultChan():
+				if !ok {
+					// The watcher has been closed, attempt to re-establish the watch
+					klog.Warning("HelmRelease watcher closed, attempting to re-establish")
+					// Implement retry logic or exit based on your requirements
+					return
+				}
+
+				// Check if the object is a *v1.Status
+				if status, ok := event.Object.(*metav1.Status); ok {
+					klog.V(4).Infof("Received Status object in HelmRelease watch: %v", status.Message)
+					continue // Skip processing this event
+				}
+
+				//// Proceed with processing Unstructured objects
+				//matches, err := r.isRelevantHelmRelease(&event)
+				//if err != nil {
+				//	klog.V(4).Infof("Non-critical error filtering HelmRelease event: %v", err)
+				//	continue
+				//}
+				//
+				//if !matches {
+				//	continue
+				//}
+
+				// Convert HelmRelease to Application
+				ns, ok := event.Object.(*corev1.Namespace)
+				if !ok {
+					klog.Errorf("Error converting HelmRelease to Application: %v", err)
+					continue
+				}
+				//var ns corev1.Namespace
+				// Convert unstructured to Namespace struct
+				//err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruc.Object, &ns)
+				//if err != nil {
+				//	klog.Errorf("Error converting from unstructured to HelmRelease: %v", err)
+				//}
+				app := namespaceToProject(ns)
+
+				// Apply field.selector by name if specified
+				//if resourceName != "" && app.Name != resourceName {
+				//	continue
+				//}
+
+				// Apply label.selector
+				if options.LabelSelector != nil {
+					sel, err := labels.Parse(options.LabelSelector.String())
+					if err != nil {
+						klog.Errorf("Invalid label selector: %v", err)
+						continue
+					}
+					if !sel.Matches(labels.Set(app.Labels)) {
+						continue
+					}
+				}
+
+				// Convert Application to unstructured
+				unstructuredApp, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&app)
+				if err != nil {
+					klog.Errorf("Failed to convert Project to unstructured: %v", err)
+					continue
+				}
+
+				// Create watch event with Application object
+				appEvent := watch.Event{
+					Type:   event.Type,
+					Object: &unstructured.Unstructured{Object: unstructuredApp},
+				}
+
+				// Send event to custom watcher
+				select {
+				case customW.resultChan <- appEvent:
+				case <-customW.stopChan:
+					return
+				case <-ctx.Done():
+					return
+				}
+
+			case <-customW.stopChan:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return customW, nil
+}
 
 // getNamespace extracts the namespace from the context
 func (r *REST) getNamespace(ctx context.Context) (string, error) {
@@ -252,8 +396,6 @@ func (r *REST) getNamespace(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return namespace, nil
-
-	// todo(jdanek): oc delete project tries to watch next, ending up in deluge of errors
 }
 
 // buildLabelSelector constructs a label selector string from a map of labels
@@ -477,6 +619,10 @@ func (e errNotAcceptable) Status() metav1.Status {
 // namespaceToProject converts a Namespace to a Project
 func namespaceToProject(namespace *corev1.Namespace) *projectv1.Project {
 	return &projectv1.Project{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Project",
+			APIVersion: projectv1.GroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            namespace.Name,
 			ResourceVersion: namespace.ResourceVersion,
