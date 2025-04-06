@@ -100,11 +100,6 @@ jobs:
       - name: Check that API extension server works
         run: timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'
 
-      - name: Create admin-user
-        run: |
-          kubectl create serviceaccount -n oauth-server admin-user
-          kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user
-
       - run: kubectl create namespace redhat-ods-applications
 
       - name: Login to ArgoCD
@@ -131,6 +126,11 @@ jobs:
 
       - name: Install fake oauth-server
         run: kubectl apply -k components/oauth-server
+
+      - name: Create admin-user
+        run: |
+          kubectl create serviceaccount -n oauth-server admin-user
+          kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user
 
       - name: Install ODH Dashboard
         run: |
