@@ -143,9 +143,34 @@ jobs:
       - name: Setup cypress
         run: |
           set -Eeuxo pipefail
+
+          # tput: No value for $TERM and no -T specified
+          sudo apt-get update
+          sudo apt-get install -y xterm ncurses-bin
+
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
           npm install
           
           # cypress run -b chrome --project src/__tests__/cypress --env skipTags=@Bug,grepTags=@Smoke --config video=true
           CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '**/workbenches/workbenches.cy.ts'
         working-directory: odh-dashboard/frontend
+        env:
+          TERM: xterm
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-report
+          path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/index.html
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots
+          path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: ! cancelled()
+        with:
+          name: cypress-videos
+          path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/videos
