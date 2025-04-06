@@ -112,7 +112,8 @@ jobs:
         run: |
           kubectl apply -f components/04-odh-dashboard.yaml
           
-          argocd app sync odh-dashboard
+          # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
+          timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'
 
       - name: Set fake DSC and DSCI
         run: kubectl apply -f components/07-dsc-dsci.yaml
