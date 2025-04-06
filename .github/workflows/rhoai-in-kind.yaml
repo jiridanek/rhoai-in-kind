@@ -109,15 +109,16 @@ jobs:
           argocd cluster add kind-kind --yes
 
       # not needed at the moment
+      # actually needed, did something that DSP Workbenches dashboard tab won't load without
 
-#      - name: Install KF Pipelines
-#        run: |
-#          kubectl apply -f components/03-kf-pipelines.yaml
-#
-#          argocd app sync kf-pipelines
-#
-#          # wait for argocd to sync the application
-#          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
+      - name: Install KF Pipelines
+        run: |
+          kubectl apply -f components/03-kf-pipelines.yaml
+
+          timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'
+
+          # wait for argocd to sync the application
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
 
       - name: Install Service CA Operator
         run: |
