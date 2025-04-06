@@ -48,8 +48,38 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL.RawQuery = params.Encode()
 
-	w.Header().Set("Location", redirectURL.String())
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	if r.Method == "POST" {
+		w.Header().Set("Location", redirectURL.String())
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	} else {
+		tmplt := template.Must(template.New("login html").Parse(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>oauth-server</title>
+</head>
+<body>
+<ul>
+<li><a href="" role="link" name="adm-auth">adm-auth</a></li>
+</ul>
+<form action="{{ .Query }}" method="post">
+<input type="text" name="username" placeholder="kube-admin" />
+<input type="password" name="password" placeholder="" />
+<input type="submit" value="Login">
+</form>
+</body>
+</html>
+`))
+		if err := tmplt.Execute(w, struct {
+			Query string
+		}{
+			Query: r.URL.String(),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 }
 
 func handleToken(w http.ResponseWriter, r *http.Request) {
