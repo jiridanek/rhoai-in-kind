@@ -48,14 +48,14 @@ spec:
   gatewayClassName: istio
   listeners:
     - name: http
-      hostname: "*.localhost"
+      hostname: "*.127.0.0.1.sslip.io"
       port: 80
       protocol: HTTP
       allowedRoutes:
         namespaces:
           from: All
     - name: https
-      hostname: "*.localhost"
+      hostname: "*.127.0.0.1.sslip.io"
       port: 443
       protocol: TLS
       tls:

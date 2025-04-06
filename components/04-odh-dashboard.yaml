@@ -73,7 +73,7 @@ spec:
   parentRefs:
     - name: gateway
       namespace: istio-system
-  hostnames: ["rhods-dashboard.localhost"]
+  hostnames: ["rhods-dashboard.127.0.0.1.sslip.io"]
   rules:
     - backendRefs:
         - name: rhods-dashboard
