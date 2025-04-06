@@ -165,6 +165,10 @@ jobs:
           volumeBindingMode: WaitForFirstConsumer
           EOF
 
+      - name: Bring down Small workbench resource requests
+        run: |
+          components/patch-workbench-resource-requests.sh
+
       - name: Setup cypress
         run: |
           set -Eeuxo pipefail
