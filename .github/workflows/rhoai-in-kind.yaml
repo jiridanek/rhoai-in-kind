@@ -14,6 +14,14 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - uses: actions/checkout@v4
+        with:
+          repository: opendatahub-io/odh-dashboard
+          ref: main
+          path: odh-dashboard
+          sparse-checkout: |
+            frontend/
+
       - name: Install ArgoCD CLI
         run: |
           curl -sSL -o /tmp/argocd-${ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64
@@ -60,10 +68,12 @@ jobs:
           kubectl create -k components/01-argocd
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
 
-      - name: Install Kyverno
-        run: |
-          kubectl create -k components/02-kyverno
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
+      # not needed at the moment
+
+#      - name: Install Kyverno
+#        run: |
+#          kubectl create -k components/02-kyverno
+#          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
 
       - name: Deploy fake CRDs
         run: kubectl apply -k components/crds
@@ -79,14 +89,16 @@ jobs:
           argocd login --core
           argocd cluster add kind-kind --yes
 
-      - name: Install KF Pipelines
-        run: |
-          kubectl apply -f components/03-kf-pipelines.yaml
+      # not needed at the moment
 
-          argocd app sync kf-pipelines
-          
-          # wait for argocd to sync the application
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
+#      - name: Install KF Pipelines
+#        run: |
+#          kubectl apply -f components/03-kf-pipelines.yaml
+#
+#          argocd app sync kf-pipelines
+#
+#          # wait for argocd to sync the application
+#          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
 
       - name: Install Service CA Operator
         run: |
@@ -126,3 +138,13 @@ jobs:
           reclaimPolicy: Delete
           volumeBindingMode: WaitForFirstConsumer
           EOF
+
+      - name: Setup cypress
+        run: |
+          set -Eeuxo pipefail
+          # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
+          npm install
+          
+          # cypress run -b chrome --project src/__tests__/cypress --env skipTags=@Bug,grepTags=@Smoke --config video=true
+          CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '**/workbenches/workbenches.cy.ts'
+        working-directory: odh-dashboard/frontend
