@@ -1,0 +1,216 @@
+---
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+metadata:
+  annotations:
+    platform.opendatahub.io/instance.name: default-workbenches
+    opendatahub.io/notebook-image-order: '10'
+    opendatahub.io/notebook-image-url: 'https://github.com/red-hat-data-services/notebooks/tree/main/jupyter/minimal'
+    internal.config.kubernetes.io/previousNamespaces: default
+    internal.config.kubernetes.io/previousKinds: ImageStream
+    platform.opendatahub.io/instance.generation: '1'
+    opendatahub.io/notebook-image-name: Minimal Python
+    internal.config.kubernetes.io/previousNames: s2i-minimal-notebook
+    platform.opendatahub.io/version: 2.19.0
+    openshift.io/image.dockerRepositoryCheck: '2025-03-26T07:30:52Z'
+    platform.opendatahub.io/instance.uid: df186289-93ed-40ff-a333-f111fb87de68
+    opendatahub.io/notebook-image-desc: Jupyter notebook image with minimal dependency set to start experimenting with Jupyter environment.
+    platform.opendatahub.io/type: OpenShift AI Self-Managed
+  name: s2i-minimal-notebook
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: workbenches
+    app.opendatahub.io/workbenches: 'true'
+    component.opendatahub.io/name: notebooks
+    opendatahub.io/component: 'true'
+    opendatahub.io/notebook-image: 'true'
+    platform.opendatahub.io/part-of: workbenches
+spec:
+  lookupPolicy:
+    local: true
+  tags:
+    - name: '1.2'
+      annotations:
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: '3e71410'
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name":"JupyterLab","version": "3.2"},
+            {"name": "Notebook","version": "6.4"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name":"Python","version":"v3.8"}
+          ]
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:39068767eebdf3a127fe8857fbdaca0832cdfef69eed6ec3ff6ed1858029420f'
+      generation: 2
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2023.1'
+      annotations:
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: 07015ec
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name":"JupyterLab","version": "3.5"},
+            {"name": "Notebook","version": "6.5"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name":"Python","version":"v3.9"}
+          ]
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:eec50e5518176d5a31da739596a7ddae032d73851f9107846a587442ebd10a82'
+      generation: 2
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2023.2'
+      annotations:
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: 76a016f
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name":"JupyterLab","version": "3.6"},
+            {"name": "Notebook","version": "6.5"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name":"Python","version":"v3.9"}
+          ]
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:4ba72ae7f367a36030470fa4ac22eca0aab285c7c3f1c4cdcc33dc07aa522143'
+      generation: 2
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2024.1'
+      annotations:
+        opendatahub.io/default-image: 'true'
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: b42b86c
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "JupyterLab","version": "3.6"},
+            {"name": "Notebook","version": "6.5"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "Python", "version": "v3.11"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'false'
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:e2296a1386e4d9756c386b4c7dc44bac6f61b99b3b894a10c9ff2d8d5602ca4e'
+      generation: 4
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2024.2'
+      annotations:
+        opendatahub.io/default-image: 'true'
+        opendatahub.io/notebook-build-commit: be38cca
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "JupyterLab","version": "4.2"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "Python", "version": "v3.11"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'false'
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:2217d8a9cbf84c2bd3e6c6dc09089559e8a3905687ca3739e897c4b45e2b00b3'
+      generation: 6
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2025.1'
+      annotations:
+        opendatahub.io/default-image: 'true'
+        opendatahub.io/notebook-build-commit: 3fa2d83
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "JupyterLab","version": "4.2"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "Python", "version": "v3.11"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'true'
+        openshift.io/imported-from: quay.io/modh/odh-minimal-notebook-container
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/odh-minimal-notebook-container@sha256:addd6f8573858510cfa94d1972feb868eb9db04aa38b632616de88b0dcd3d989'
+      generation: 8
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+status:
+  # 'image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/s2i-minimal-notebook'
+  tags:
+    - tag: '1.2'
+      items:
+        - created: '2025-01-20T11:50:12Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:39068767eebdf3a127fe8857fbdaca0832cdfef69eed6ec3ff6ed1858029420f'
+          image: 'sha256:39068767eebdf3a127fe8857fbdaca0832cdfef69eed6ec3ff6ed1858029420f'
+          generation: 2
+    - tag: '2023.1'
+      items:
+        - created: '2025-01-20T11:50:12Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:eec50e5518176d5a31da739596a7ddae032d73851f9107846a587442ebd10a82'
+          image: 'sha256:eec50e5518176d5a31da739596a7ddae032d73851f9107846a587442ebd10a82'
+          generation: 2
+    - tag: '2023.2'
+      items:
+        - created: '2025-01-20T11:50:12Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:4ba72ae7f367a36030470fa4ac22eca0aab285c7c3f1c4cdcc33dc07aa522143'
+          image: 'sha256:4ba72ae7f367a36030470fa4ac22eca0aab285c7c3f1c4cdcc33dc07aa522143'
+          generation: 2
+    - tag: '2024.1'
+      items:
+        - created: '2025-01-24T15:58:52Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:e2296a1386e4d9756c386b4c7dc44bac6f61b99b3b894a10c9ff2d8d5602ca4e'
+          image: 'sha256:e2296a1386e4d9756c386b4c7dc44bac6f61b99b3b894a10c9ff2d8d5602ca4e'
+          generation: 4
+        - created: '2025-01-20T11:50:12Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:d4239dc57228762425a5d596e827748d70e243d175c3571fa852ba6cb1df35a7'
+          image: 'sha256:d4239dc57228762425a5d596e827748d70e243d175c3571fa852ba6cb1df35a7'
+          generation: 2
+    - tag: '2024.2'
+      items:
+        - created: '2025-03-11T08:29:09Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:2217d8a9cbf84c2bd3e6c6dc09089559e8a3905687ca3739e897c4b45e2b00b3'
+          image: 'sha256:2217d8a9cbf84c2bd3e6c6dc09089559e8a3905687ca3739e897c4b45e2b00b3'
+          generation: 6
+        - created: '2025-01-24T15:58:52Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:16d6e722be4648dfe92a315472dbeed98aa777ad64a52d6f15be2241544b045c'
+          image: 'sha256:16d6e722be4648dfe92a315472dbeed98aa777ad64a52d6f15be2241544b045c'
+          generation: 4
+        - created: '2025-01-20T11:50:12Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:615af25cfd4f3f2981b173e1a5ab24cb79f268ee72dabbddb6867ee1082eb902'
+          image: 'sha256:615af25cfd4f3f2981b173e1a5ab24cb79f268ee72dabbddb6867ee1082eb902'
+          generation: 2
+    - tag: '2025.1'
+      items:
+        - created: '2025-03-26T07:30:52Z'
+          dockerImageReference: 'quay.io/modh/odh-minimal-notebook-container@sha256:addd6f8573858510cfa94d1972feb868eb9db04aa38b632616de88b0dcd3d989'
+          image: 'sha256:addd6f8573858510cfa94d1972feb868eb9db04aa38b632616de88b0dcd3d989'
+          generation: 8

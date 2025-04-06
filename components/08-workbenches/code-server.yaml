@@ -1,0 +1,179 @@
+---
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+metadata:
+  annotations:
+    platform.opendatahub.io/instance.name: default-workbenches
+    opendatahub.io/notebook-image-order: '80'
+    opendatahub.io/notebook-image-url: 'https://github.com/red-hat-data-services/notebooks/tree/main/codeserver'
+    internal.config.kubernetes.io/previousNamespaces: default
+    internal.config.kubernetes.io/previousKinds: ImageStream
+    platform.opendatahub.io/instance.generation: '1'
+    opendatahub.io/notebook-image-name: code-server
+    internal.config.kubernetes.io/previousNames: code-server-notebook
+    platform.opendatahub.io/version: 2.19.0
+    openshift.io/image.dockerRepositoryCheck: '2025-03-26T07:22:00Z'
+    platform.opendatahub.io/instance.uid: df186289-93ed-40ff-a333-f111fb87de68
+    opendatahub.io/notebook-image-desc: 'code-server workbench allows users to code, build, and collaborate on projects directly from web.'
+    platform.opendatahub.io/type: OpenShift AI Self-Managed
+  name: code-server-notebook
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: workbenches
+    app.opendatahub.io/workbenches: 'true'
+    component.opendatahub.io/name: notebooks
+    opendatahub.io/component: 'true'
+    opendatahub.io/notebook-image: 'true'
+    platform.opendatahub.io/part-of: workbenches
+spec:
+  lookupPolicy:
+    local: true
+  tags:
+    - name: '2023.2'
+      annotations:
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: 76a016f
+        opendatahub.io/notebook-python-dependencies: '[{"name":"code-server","version":"4.16"}]'
+        opendatahub.io/notebook-software: '[{"name":"Python","version":"v3.9"}]'
+        openshift.io/imported-from: quay.io/modh/codeserver
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/codeserver@sha256:b1a048f3711149e36a89e0eda1a5601130fb536ecc0aabae42ab6e4d26977354'
+      generation: 2
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2024.1'
+      annotations:
+        opendatahub.io/image-tag-outdated: 'true'
+        opendatahub.io/notebook-build-commit: b42b86c
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "Boto3", "version": "1.34"},
+            {"name": "Kafka-Python", "version": "2.0"},
+            {"name": "Matplotlib", "version": "3.8"},
+            {"name": "Numpy", "version": "1.26"},
+            {"name": "Pandas", "version": "2.2"},
+            {"name": "Plotly", "version": "5.19"},
+            {"name": "Scikit-learn", "version": "1.4"},
+            {"name": "Scipy", "version": "1.12"},
+            {"name": "Sklearn-onnx", "version": "1.16"},
+            {"name": "ipykernel", "version": "6.29"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "code-server", "version": "4.22"},
+            {"name": "Python", "version": "v3.9"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'false'
+        openshift.io/imported-from: quay.io/modh/codeserver
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/codeserver@sha256:1fd51b0e8a14995f1f7273a4b0b40f6e7e27e225ab179959747846e54079d61e'
+      generation: 4
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2024.2'
+      annotations:
+        opendatahub.io/notebook-build-commit: be38cca
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "Boto3", "version": "1.34"},
+            {"name": "Kafka-Python", "version": "2.0"},
+            {"name": "Matplotlib", "version": "3.8"},
+            {"name": "Numpy", "version": "1.26"},
+            {"name": "Pandas", "version": "2.2"},
+            {"name": "Scikit-learn", "version": "1.4"},
+            {"name": "Scipy", "version": "1.12"},
+            {"name": "Sklearn-onnx", "version": "1.16"},
+            {"name": "ipykernel", "version": "6.29"},
+            {"name": "Kubeflow-Training", "version": "1.8"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "code-server", "version": "4.92"},
+            {"name": "Python", "version": "v3.11"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'false'
+        openshift.io/imported-from: quay.io/modh/codeserver
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/codeserver@sha256:92f2a10dde5c96b29324426b4325401e8f4a0d257e439927172d5fe909289c44'
+      generation: 6
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+    - name: '2025.1'
+      annotations:
+        opendatahub.io/notebook-build-commit: 3fa2d83
+        opendatahub.io/notebook-python-dependencies: |
+          [
+            {"name": "Boto3", "version": "1.37"},
+            {"name": "Kafka-Python-ng", "version": "2.2"},
+            {"name": "Matplotlib", "version": "3.10"},
+            {"name": "Numpy", "version": "2.2"},
+            {"name": "Pandas", "version": "2.2"},
+            {"name": "Scikit-learn", "version": "1.6"},
+            {"name": "Scipy", "version": "1.15"},
+            {"name": "Sklearn-onnx", "version": "1.18"},
+            {"name": "ipykernel", "version": "6.29"},
+            {"name": "Kubeflow-Training", "version": "1.9"}
+          ]
+        opendatahub.io/notebook-software: |
+          [
+            {"name": "code-server", "version": "4.98"},
+            {"name": "Python", "version": "v3.11"}
+          ]
+        opendatahub.io/workbench-image-recommended: 'true'
+        openshift.io/imported-from: quay.io/modh/codeserver
+      from:
+        kind: DockerImage
+        name: 'quay.io/modh/codeserver@sha256:38460e3b5536d903add40869714512e2c3a993c3dfe4a8010688e4e3b79bf090'
+      generation: 8
+      importPolicy:
+        importMode: Legacy
+      referencePolicy:
+        type: Source
+status:
+  # dockerImageRepository: 'image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/code-server-notebook'
+  tags:
+    - tag: '2023.2'
+      items:
+        - created: '2025-01-20T11:55:55Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:b1a048f3711149e36a89e0eda1a5601130fb536ecc0aabae42ab6e4d26977354'
+          image: 'sha256:b1a048f3711149e36a89e0eda1a5601130fb536ecc0aabae42ab6e4d26977354'
+          generation: 2
+    - tag: '2024.1'
+      items:
+        - created: '2025-01-24T15:52:55Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:1fd51b0e8a14995f1f7273a4b0b40f6e7e27e225ab179959747846e54079d61e'
+          image: 'sha256:1fd51b0e8a14995f1f7273a4b0b40f6e7e27e225ab179959747846e54079d61e'
+          generation: 4
+        - created: '2025-01-20T11:55:55Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:381e498fbb347cbe969774a7546fe1f3dd3fd52e20b316e0dd927af26d5af0cf'
+          image: 'sha256:381e498fbb347cbe969774a7546fe1f3dd3fd52e20b316e0dd927af26d5af0cf'
+          generation: 2
+    - tag: '2024.2'
+      items:
+        - created: '2025-03-11T08:21:01Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:92f2a10dde5c96b29324426b4325401e8f4a0d257e439927172d5fe909289c44'
+          image: 'sha256:92f2a10dde5c96b29324426b4325401e8f4a0d257e439927172d5fe909289c44'
+          generation: 6
+        - created: '2025-01-24T15:52:55Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:33e74fe7f5e835f71cb2f35d5b83c2514db82c961c412ba2f7813dbdd44b06aa'
+          image: 'sha256:33e74fe7f5e835f71cb2f35d5b83c2514db82c961c412ba2f7813dbdd44b06aa'
+          generation: 4
+        - created: '2025-01-20T11:55:55Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:c736720505a7a14fe5b8758bd18c3ae086fba2a5c0582c2135c28d63da424187'
+          image: 'sha256:c736720505a7a14fe5b8758bd18c3ae086fba2a5c0582c2135c28d63da424187'
+          generation: 2
+    - tag: '2025.1'
+      items:
+        - created: '2025-03-26T07:22:00Z'
+          dockerImageReference: 'quay.io/modh/codeserver@sha256:38460e3b5536d903add40869714512e2c3a993c3dfe4a8010688e4e3b79bf090'
+          image: 'sha256:38460e3b5536d903add40869714512e2c3a993c3dfe4a8010688e4e3b79bf090'
+          generation: 8

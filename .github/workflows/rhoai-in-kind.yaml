@@ -124,6 +124,10 @@ jobs:
         run: |
           kubectl apply -k components/09-kf-notebooks.yaml
 
+      - name: Install Workbenches
+        run: |
+          kubectl apply -k components/08-workbenches
+
       - name: Install Service CA Operator
         run: |
           kubectl label node --all node-role.kubernetes.io/master=

@@ -1,0 +1,12 @@
+# We don't have imagestreams operator, so the resources have to come with `status:` already set.
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# https://github.com/kubernetes-sigs/kustomize/issues/3742
+namespace: redhat-ods-applications
+resources:
+#  - git@github.com:opendatahub-io/notebooks.git/manifests/base/?timeout=90s
+#  - git@github.com:rhoai-ide-konflux/notebooks.git/manifests/base/?ref=manifests&timeout=90s
+  - minimal.yaml
+  - code-server.yaml

@@ -8,3 +8,8 @@ resources:
   - consolelink.yaml
   - dsc.yaml
   - dsci.yaml
+  - imagestream.yaml
+  - buildconfig.yaml
+#  - servingruntime.yaml
+#  - inferenceservice.yaml
+#  - auth.yaml
