@@ -187,7 +187,11 @@ jobs:
 
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
           npm install
-          
+        working-directory: odh-dashboard/frontend
+
+      - name: Run cypress
+        run: |
+          set -Eeuxo pipefail
           # cypress run -b chrome --project src/__tests__/cypress --env skipTags=@Bug,grepTags=@Smoke --config video=true
           CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '**/workbenches/workbenches.cy.ts'
         working-directory: odh-dashboard/frontend
