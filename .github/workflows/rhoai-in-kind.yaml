@@ -89,7 +89,13 @@ jobs:
         run: kubectl apply -k components/crds
 
       - name: Deploy api-extension
-        run: kubectl apply -k components/api-extension
+        run: |
+          kubectl apply -k components/api-extension
+
+          kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s
+
+      - if: "!cancelled()"
+        run: kubectl logs -n api-extension deployment/apiserver
 
       - name: Check that API extension server works
         run: timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'
@@ -183,7 +189,7 @@ jobs:
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/screenshots
 
       - uses: actions/upload-artifact@v4
-        if: ! cancelled()
+        if: "!cancelled()"
         with:
           name: cypress-videos
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/videos
