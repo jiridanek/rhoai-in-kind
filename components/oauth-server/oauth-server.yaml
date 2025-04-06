@@ -66,7 +66,7 @@ spec:
   parentRefs:
     - name: gateway
       namespace: istio-system
-  hostnames: ["oauth-server.localhost"]
+  hostnames: ["oauth-server.127.0.0.1.sslip.io"]
   rules:
     - backendRefs:
         - name: oauth-server
