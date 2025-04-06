@@ -1,0 +1,64 @@
+#apiVersion: argoproj.io/v1alpha1
+#kind: AppProject
+#metadata:
+#  name: redhat-ods-applications
+#  namespace: argocd
+#spec:
+#  sourceRepos:
+#    - '*'
+#  destinations:
+#    - namespace: '*'
+#      server: '*'
+#  clusterResourceWhitelist:
+#    - group: '*'
+#      kind: '*'
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: redhat-ods-applications
+resources:
+  - git@github.com:opendatahub-io/kubeflow.git/components/notebook-controller/config/overlays/kubeflow/
+  - git@github.com:opendatahub-io/kubeflow.git/components/odh-notebook-controller/config/base/
+  - culler-config.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: odh-notebook-controller-manager
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/args/1
+        value: quay.io/jdanek/origin-oauth-proxy:latest
+---
+# https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+#apiVersion: argoproj.io/v1alpha1
+#kind: Application
+#metadata:
+#  name: kf-notebooks2
+#  namespace: argocd
+#spec:
+#  project: redhat-ods-applications
+#  destination:
+#    server: https://kubernetes.default.svc
+#    namespace: redhat-ods-applications
+#  sources:
+#    # https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/
+#    - repoURL: https://github.com/opendatahub-io/kubeflow.git
+#      path: components/notebook-controller/config/overlays/kubeflow
+#      targetRevision: HEAD
+#      kustomize:
+#        images:
+#          - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
+#        replicas:
+#          - name: rhods-dashboard
+#            count: 1
+#    - repoURL: https://github.com/opendatahub-io/kubeflow.git
+#      path: components/odh-notebook-controller/config/base
+#      targetRevision: HEAD
+#      kustomize:
+#        images:
+#          - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
+#        replicas:
+#          - name: rhods-dashboard
+#            count: 1
+---

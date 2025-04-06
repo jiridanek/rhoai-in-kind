@@ -120,6 +120,10 @@ jobs:
           # wait for argocd to sync the application
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s
 
+      - name: Install KF Notebooks
+        run: |
+          kubectl apply -k components/09-kf-notebooks.yaml
+
       - name: Install Service CA Operator
         run: |
           kubectl label node --all node-role.kubernetes.io/master=

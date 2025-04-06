@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notebook-controller-culler-config
+  namespace: redhat-ods-applications
+data:
+  ENABLE_CULLING: "true"
+  CULL_IDLE_TIME: "60" # In minutes (1 hour)
+  IDLENESS_CHECK_PERIOD: "5" # In minutes
