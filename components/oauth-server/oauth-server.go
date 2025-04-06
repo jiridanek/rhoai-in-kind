@@ -4,13 +4,23 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
+	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
+	"time"
+
+	authenticationv1 "k8s.io/api/authentication/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -33,7 +43,7 @@ func main() {
 }
 
 func handleAuth(w http.ResponseWriter, r *http.Request) {
-
+	log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
 	whereToRedirect := r.URL.Query().Get("redirect_uri")
 	if whereToRedirect == "" {
 		whereToRedirect = "http://example.org?no=1234"
@@ -82,6 +92,11 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type OauthTokenResponse struct {
+	Token       string `json:"token"`
+	AccessToken string `json:"access_token"`
+}
+
 func handleToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	exchangeCode := r.FormValue("code")
@@ -92,8 +107,35 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 		// https://github.com/openshift/oauth-proxy/blob/3d12ccbee45c5d4bcea8c232867df58a60c4382b/providers/openshift/provider.go#L578C29-L578C41
 		// kubectl create serviceaccount -n oauth-server admin-user
 		// kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user
-		// kubectl -n oauth-server create token admin-user
-		_, err := w.Write([]byte("{\"token\":\"a34a5f6\",\"access_token\":\"eyJhbGciOiJSUzI1NiIsImtpZCI6IkhMa3ExTEp1aEdRQlZRQnFsamtSbzNwOEhFMlFsbDRfNTFXMmlXSWd6cjQifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjLmNsdXN0ZXIubG9jYWwiXSwiZXhwIjoxNzQzNzk0ODE5LCJpYXQiOjE3NDM3OTEyMTksImlzcyI6Imh0dHBzOi8va3ViZXJuZXRlcy5kZWZhdWx0LnN2Yy5jbHVzdGVyLmxvY2FsIiwianRpIjoiODc5Y2ZkNTctMWQ4Yi00MzkxLWE1YjYtNmYzODgxNTJjZjFiIiwia3ViZXJuZXRlcy5pbyI6eyJuYW1lc3BhY2UiOiJvYXV0aC1zZXJ2ZXIiLCJzZXJ2aWNlYWNjb3VudCI6eyJuYW1lIjoiYWRtaW4tdXNlciIsInVpZCI6IjExMzk3N2FmLWY2YTAtNDY3Mi05MTU5LTE2MTg1MjY1Njk5ZSJ9fSwibmJmIjoxNzQzNzkxMjE5LCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6b2F1dGgtc2VydmVyOmFkbWluLXVzZXIifQ.gwmS9PMM8dHyWK0_qf82uiGhAulvRc3MiYe43A-KUd7RPstk_91HrQLiXa6buHuy-PCindDY4S14vFe9obkFGlInA61t_dCneO2AkDjcLk136ZzYyZCzmGBVmfpf2AhCv4rkurrMzXDuYBoSDVPAoWvRjGykjjep9zyl8_xUQ42xsyjXdJMyfzyHBkkO8FrKZAznzU1KnjS8TbR1MdEq-KCZDLGde2qBIEXBOxNwLDqxGHXIKZksRUvqvJIUpiijXlXv4eB8mRUhvGCRoKwtbMC9myCv0XuJynLqkOFFV-foWQZPIvTt-FXwJdYna3NSbt1YnKH-5XttP-amcTXxtQ\"}"))
+		// kubectl -n oauth-server create token admin-user --duration=168h
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			panic(err.Error())
+		}
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			panic(err.Error())
+		}
+		tokenRequest := &authenticationv1.TokenRequest{
+			Spec: authenticationv1.TokenRequestSpec{
+				ExpirationSeconds: ptr.To(int64(168 * time.Hour / time.Second)), // 168 hours in seconds
+			},
+		}
+		token, err := clientset.CoreV1().ServiceAccounts("oauth-server").CreateToken(context.TODO(), "admin-user", tokenRequest, metav1.CreateOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		fmt.Printf("Token expires At: %s\n", token.Status.ExpirationTimestamp.Format(time.RFC3339))
+		tokenResp := OauthTokenResponse{
+			Token:       "a34a5f6",
+			AccessToken: token.Status.Token,
+		}
+		jsonResponse, err := json.Marshal(tokenResp)
+		if err != nil {
+			http.Error(w, "Error encoding JSON response", http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(jsonResponse)
 		if err != nil {
 			panic(err)
 		}
