@@ -122,7 +122,7 @@ jobs:
 
       - name: Install KF Notebooks
         run: |
-          kubectl apply -k components/09-kf-notebooks.yaml
+          kubectl apply -k components/09-kf-notebooks
 
       - name: Install Workbenches
         run: |
