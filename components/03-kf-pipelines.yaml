@@ -61,7 +61,7 @@ spec:
                       - name: IMAGES_MLMDENVOY
                         value: quay.io/maistra/proxyv2-ubi8:2.5.0
                       - name: IMAGES_OAUTHPROXY
-                        value: localhost/oauth-proxy:myversion
+                        value: quay.io/jdanek/origin-oauth-proxy
                       - name: IMAGES_MARIADB
                         value: quay.io/fedora/mariadb-103:latest
 
