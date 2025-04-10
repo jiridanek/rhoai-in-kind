@@ -13,6 +13,13 @@ from typing import Callable
 def main():
     tf = TestFrame()
 
+    # slow to deploy so do it first
+    with gha_log_group("Install Kyverno"):
+        sh("kubectl create -k components/02-kyverno")
+        tf.defer(None, lambda _: sh(
+            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
+
     with gha_log_group("Install ArgoCD CLI"):
         ARGOCD_VERSION = "v2.14.9"
         sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-linux-amd64")
@@ -60,12 +67,6 @@ def main():
         sh("kubectl create -k components/01-argocd")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
-
-    with gha_log_group("Install Kyverno"):
-        sh("kubectl create -k components/02-kyverno")
-        tf.defer(None, lambda _: sh(
-            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Deploy fake CRDs"):
         sh("kubectl apply -k components/crds")
