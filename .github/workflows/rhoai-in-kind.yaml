@@ -59,8 +59,8 @@ jobs:
           set -Eeuxo pipefail
 
           # tput: No value for $TERM and no -T specified
-          sudo apt-get update
-          sudo apt-get install -y xterm ncurses-bin
+          #sudo apt-get update
+          #sudo apt-get install -y xterm ncurses-bin
 
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
           npm install
@@ -73,7 +73,8 @@ jobs:
           CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '**/workbenches/workbenches.cy.ts'
         working-directory: odh-dashboard/frontend
         env:
-          TERM: xterm
+          # dumb, xterm, xterm-256color
+          TERM: xterm-256color
 
       - uses: actions/upload-artifact@v4
         if: failure()
