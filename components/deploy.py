@@ -18,7 +18,6 @@ def main():
         sh("kubectl create -k components/02-kyverno")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Install ArgoCD CLI"):
         ARGOCD_VERSION = "v2.14.9"
@@ -87,6 +86,14 @@ def main():
     with gha_log_group("Configure Argo applications"):
         sh("kubectl apply -f components/03-kf-pipelines.yaml")
         sh("kubectl apply -f components/04-odh-dashboard.yaml")
+
+    with gha_log_group("Run deferred functions"):
+        with tf:
+            pass
+
+    with gha_log_group("Install Kyverno policies"):
+        sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/policy.yaml; do sleep 1; done'")
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Run deferred functions"):
         with tf:
