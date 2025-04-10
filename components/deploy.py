@@ -57,11 +57,13 @@ def main():
 
     with gha_log_group("Install ArgoCD"):
         sh("kubectl create -k components/01-argocd")
-        tf.defer(None, lambda _: sh("kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
+        tf.defer(None, lambda _: sh(
+            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
 
     with gha_log_group("Install Kyverno"):
         sh("kubectl create -k components/02-kyverno")
-        tf.defer(None, lambda _: sh("kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
+        tf.defer(None, lambda _: sh(
+            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
         tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Deploy fake CRDs"):
@@ -69,7 +71,8 @@ def main():
 
     with gha_log_group("Deploy api-extension"):
         sh("kubectl apply -k components/api-extension")
-        tf.defer(None, lambda _: sh("kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s"))
+        tf.defer(None, lambda _: sh(
+            "kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s"))
 
         tf.defer(None, lambda _: sh("kubectl logs -n api-extension deployment/apiserver"))
 
@@ -79,6 +82,45 @@ def main():
     with gha_log_group("Run kubectl create namespace redhat-ods-applications"):
         sh("kubectl create namespace redhat-ods-applications")
 
+    with gha_log_group("Login to ArgoCD"):
+        sh("kubectl config set-context --current --namespace=argocd")
+        sh("argocd login --core")
+        sh("argocd cluster add kind-kind --yes")
+
+    # actually needed, did something that DSP Workbenches dashboard tab won't load without
+    with gha_log_group("Install KF Pipelines"):
+        sh("kubectl apply -f components/03-kf-pipelines.yaml")
+        sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
+
+        # wait for argocd to sync the application
+        tf.defer(None, lambda _: sh(
+            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s"))
+
+    with gha_log_group("Install KF Notebooks"):
+        sh("kubectl apply -k components/09-kf-notebooks")
+
+    with gha_log_group("Install Workbenches"):
+        sh("kubectl apply -k components/08-workbenches")
+
+    with gha_log_group("Install Service CA Operator"):
+        sh("kubectl label node --all node-role.kubernetes.io/master=")
+        sh("timeout 30s bash -c 'while ! kubectl apply -k components/05-ca-operator; do sleep 1; done'")
+
+    with gha_log_group("Install fake oauth-server"):
+        sh("kubectl apply -k components/oauth-server")
+
+    with gha_log_group("Create admin-user"):
+        sh("kubectl create serviceaccount -n oauth-server admin-user")
+        sh("kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user")
+
+    with gha_log_group("Install ODH Dashboard"):
+        sh("kubectl apply -f components/04-odh-dashboard.yaml")
+
+        # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
+        sh("timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
+
+    with gha_log_group("Set fake DSC and DSCI"):
+        sh("kubectl apply -f components/07-dsc-dsci.yaml")
 
     with gha_log_group("Run deferred functions"):
         with tf:
@@ -123,7 +165,7 @@ class TestFrame:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         while self.stack:
-            obj, fn = self.stack.pop()
+            obj, fn = self.stack.pop(0)
             fn(obj)
 
 
