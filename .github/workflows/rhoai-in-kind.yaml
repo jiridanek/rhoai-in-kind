@@ -174,9 +174,9 @@ jobs:
 
       # this is probably better done with Kyverno
 
-      #- name: Bring down Small workbench resource requests
-      #  run: |
-      #    components/patch-workbench-resource-requests.sh
+      - name: Bring down Small workbench resource requests
+        run: |
+          components/patch-workbench-resource-requests.sh
 
       #- name: Install pnpm
       #  run: |
