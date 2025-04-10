@@ -110,8 +110,9 @@ def main():
         sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
 
         # wait for argocd to sync the application
+        # wait for deployment as it is more robust
         tf.defer(None, lambda _: sh(
-            "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s"))
+            "oc wait --for=condition=Available deployment -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s"))
 
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")
