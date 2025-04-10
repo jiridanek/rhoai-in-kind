@@ -192,6 +192,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           cache: 'npm'
+          cache-dependency-path: 'odh-dashboard/frontend/package-lock.json'
 
       - name: Setup cypress
         run: |
