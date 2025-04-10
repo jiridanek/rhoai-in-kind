@@ -197,13 +197,14 @@ spec:
       #              memory: 0
       mutate:
         foreach:
-          - list: "request.object.spec.containers"
+          # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
+          - list: "request.object.spec.containers || []"
             patchesJson6902: |-
               - op: remove
                 path: "/spec/containers/{{elementIndex}}/resources/requests/cpu"
               - op: remove
                 path: "/spec/containers/{{elementIndex}}/resources/limits/cpu"
-          - list: "request.object.spec.initContainers"
+          - list: "request.object.spec.initContainers || []"
             patchesJson6902: |-
               - op: remove
                 path: "/spec/initContainers/{{elementIndex}}/resources/requests/cpu"
