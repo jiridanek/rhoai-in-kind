@@ -6,6 +6,7 @@ import os
 import contextlib
 import sys
 import subprocess
+import textwrap
 from typing import Callable
 
 
@@ -74,22 +75,30 @@ def main():
         tf.defer(None, lambda _: sh(
             "kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s"))
 
-        tf.defer(None, lambda _: sh("kubectl logs -n api-extension deployment/apiserver"))
+        tf.defer(None, lambda _: sh("kubectl logs --tail 10 -n api-extension deployment/apiserver"))
 
     with gha_log_group("Check that API extension server works"):
-        sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'")
+        tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
 
     with gha_log_group("Run kubectl create namespace redhat-ods-applications"):
         sh("kubectl create namespace redhat-ods-applications")
 
+    with gha_log_group("Configure Argo applications"):
+        sh("kubectl apply -f components/03-kf-pipelines.yaml")
+        sh("kubectl apply -f components/04-odh-dashboard.yaml")
+
+    with gha_log_group("Run deferred functions"):
+        with tf:
+            pass
+
     with gha_log_group("Login to ArgoCD"):
         sh("kubectl config set-context --current --namespace=argocd")
         sh("argocd login --core")
+        # time="2025-04-10T21:52:51Z" level=error msg="finished unary call with code Unknown" error="error setting cluster info in cache: dial tcp [::1]:42171: connect: connection refused" grpc.code=Unknown grpc.method=Create grpc.service=cluster.ClusterService grpc.start_time="2025-04-10T21:52:51Z" grpc.time_ms=272.867 span.kind=server system=grpc
         sh("argocd cluster add kind-kind --yes")
 
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
-        sh("kubectl apply -f components/03-kf-pipelines.yaml")
         sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
 
         # wait for argocd to sync the application
@@ -114,28 +123,49 @@ def main():
         sh("kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user")
 
     with gha_log_group("Install ODH Dashboard"):
-        sh("kubectl apply -f components/04-odh-dashboard.yaml")
-
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
         sh("timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
 
     with gha_log_group("Set fake DSC and DSCI"):
         sh("kubectl apply -f components/07-dsc-dsci.yaml")
 
+    with gha_log_group("Install local-path provisioner"):
+        sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml")
+        tf.defer(None, lambda _: sh(
+            "kubectl wait deployments --all --namespace=local-path-storage --for=condition=Available --timeout=100s"))
+        # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/
+        sh("kubectl get storageclass")
+        # kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+        # dashboard tests expect a storage class standard-csi
+        sh("kubectl apply -f -", input=textwrap.dedent("""
+          ---
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+            name: standard-csi
+          provisioner: rancher.io/local-path
+          reclaimPolicy: Delete
+          volumeBindingMode: WaitForFirstConsumer
+          """))
+
     with gha_log_group("Run deferred functions"):
         with tf:
             pass
 
 
-def sh(cmd: str, env: dict[str, str] | None = None):
+def sh(cmd: str, env: dict[str, str] | None = None, input: str | None = None):
     """Runs a shell command."""
     env = env or {}
     print(f"$ {cmd}", file=sys.stdout)
     sys.stdout.flush()
-    subprocess.check_call(
+    subprocess.run(
         "set -Eeuxo pipefail; " + cmd,
         shell=True, executable="/bin/bash",
-        env={**os.environ, **env}
+        env={**os.environ, **env},
+        input=input,
+        check=True, text=True,
     )
     sys.stdout.flush()
 
