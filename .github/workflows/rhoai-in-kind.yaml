@@ -178,20 +178,20 @@ jobs:
       #  run: |
       #    components/patch-workbench-resource-requests.sh
 
-      - name: Install pnpm
-        run: |
-          # https://pnpm.io/installation#using-corepack
-          corepack enable pnpm
-          # https://github.com/pnpm/pnpm/issues/5344
-          corepack use pnpm@latest
-          corepack prepare pnpm@latest --activate
-        working-directory: odh-dashboard/frontend
+      #- name: Install pnpm
+      #  run: |
+      #    # https://pnpm.io/installation#using-corepack
+      #    corepack enable pnpm
+      #    # https://github.com/pnpm/pnpm/issues/5344
+      #    corepack use pnpm@latest
+      #    corepack prepare pnpm@latest --activate
+      #  working-directory: odh-dashboard/frontend
 
       # https://pnpm.io/continuous-integration#github-actions
-      - name: Use Node.js with pnpm caching
+      - name: Use Node.js with npm caching
         uses: actions/setup-node@v4
         with:
-          cache: 'pnpm'
+          cache: 'npm'
 
       - name: Setup cypress
         run: |
@@ -202,7 +202,7 @@ jobs:
           sudo apt-get install -y xterm ncurses-bin
 
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
-          pnpm install
+          npm install
         working-directory: odh-dashboard/frontend
 
       - name: Run cypress
