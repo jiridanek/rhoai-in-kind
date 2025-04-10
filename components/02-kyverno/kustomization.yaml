@@ -6,3 +6,4 @@ kind: Kustomization
 namespace: kyverno
 resources:
   - https://github.com/kyverno/kyverno/releases/download/v1.13.4/install.yaml
+  - policy.yaml

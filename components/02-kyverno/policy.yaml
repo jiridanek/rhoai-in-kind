@@ -1,0 +1,215 @@
+---
+# We need to add openshift-service-ca.crt configmap to every namespace,
+# the way it would happen on OpenShift. Otherwise DSPA does not reconcile.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: openshift-like-sa-cm
+spec:
+  rules:
+    # https://kyverno.io/policies/other/sync-secrets/sync-secrets/
+    - name: sync-openshift-sa-config-map
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+                #              namespaceSelector:
+                #                matchExpressions:
+                #                  - key: openshift-like
+                #                    operator: In
+                #                    values:
+                #                      - "true"
+      generate:
+        # https://kyverno.io/docs/writing-policies/generate/#generate-for-existing-resources
+        generateExisting: true
+        apiVersion: v1
+        kind: ConfigMap
+        name: openshift-service-ca.crt
+        namespace: "{{request.object.metadata.name}}"
+        data:
+          metadata:
+            annotations:
+              "service.beta.openshift.io/inject-cabundle": "true"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: openshift-like-volume-mounts
+spec:
+  rules:
+    - name: set-serviceaccount-volume-mounts
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              # https://kyverno.io/docs/writing-policies/match-exclude/#match-deployments-in-namespaces-using-labels
+              namespaceSelector:
+                matchLabels:
+                  opendatahub.io/dashboard: "true"
+      context:
+        # https://jmespath.org/specification.html#to-number
+        # https://kyverno.io/docs/writing-policies/jmespath/#random
+        - name: randomuid
+          variable:
+            jmesPath: to_number(random('[1-9][0-9]{4}'))
+      mutate:
+        patchStrategicMerge:
+          spec:
+            # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+            initContainers:
+              - (name): "*"
+                volumeMounts:
+                  - name: "service-ca-kube-api-access"
+                    readOnly: true
+                    mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            containers:
+              - (name): "*"
+                volumeMounts:
+                  - name: "service-ca-kube-api-access"
+                    readOnly: true
+                    mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            volumes:
+              - name: "service-ca-kube-api-access"
+                projected:
+                  sources:
+                    - serviceAccountToken:
+                        expirationSeconds: 3607
+                        path: token
+                    - configMap:
+                        name: kube-root-ca.crt
+                        items:
+                          - key: ca.crt
+                            path: ca.crt
+                    - downwardAPI:
+                        items:
+                          - path: namespace
+                            fieldRef:
+                              apiVersion: v1
+                              fieldPath: metadata.namespace
+                    - configMap:
+                        name: openshift-service-ca.crt
+                        items:
+                          - key: service-ca.crt
+                            path: service-ca.crt
+                  defaultMode: 420
+
+---
+
+# We are very tight on system resources, it is necessary to make our containers BestEffort
+
+# https://kubernetes.io/docs/tasks/configure-pod-container/quality-service-pod/#create-a-pod-that-gets-assigned-a-qos-class-of-besteffort
+
+#apiVersion: kyverno.io/v1
+#kind: ClusterPolicy
+#metadata:
+#  name: remove-requests-opendatahub-ns
+#  annotations:
+#    policies.kyverno.io/title: Remove CPU/Memory Requests in OpenDataHub Namespaces
+#    policies.kyverno.io/category: Resource Management
+#    policies.kyverno.io/severity: medium
+#    policies.kyverno.io/subject: Pod, ResourceQuota
+#    policies.kyverno.io/minversion: 1.6.0 # Requires JSON Patch support for wildcards
+#    policies.kyverno.io/description: >-
+#      This policy targets Pods being created in namespaces labeled with
+#      'opendatahub.io/dashboard=true'. It removes the 'cpu' and 'memory'
+#      requests defined within 'spec.containers[*].resources.requests' and
+#      'spec.initContainers[*].resources.requests'. This can be useful
+#      when default requests should not be applied in these specific namespaces,
+#      potentially allowing more pods to be scheduled if quotas are based on limits
+#      or if requests are managed differently. Limits are unaffected.
+#spec:
+#  # 'Audit' is safer to start. Change to 'Enforce' to block pods if mutation fails.
+#  #validationFailureAction: Audit
+#  validationFailureAction: Enforce
+#  # Process requests synchronously during admission control
+#  background: false
+#  rules:
+#    - name: remove-pod-requests-in-odh-ns
+#      # Match Pod creation events
+#      match:
+#        any:
+#          - resources:
+#              kinds:
+#                - Pod
+#              operations:
+#                - CREATE
+#              # Only apply to namespaces with the specific OpenDataHub label
+#              #namespaceSelector:
+#              #  matchLabels:
+#              #    opendatahub.io/dashboard: "true"
+#      # Mutate the Pod resource
+#      mutate:
+#        # Use JSON Patch 6902 for precise removal operations
+#        patchesJson6902: |-
+#          [
+#            {"op": "remove", "path": "/spec/containers/*/resources/requests/cpu"},
+#            {"op": "remove", "path": "/spec/containers/*/resources/requests/memory"},
+#            {"op": "remove", "path": "/spec/initContainers/*/resources/requests/cpu"},
+#            {"op": "remove", "path": "/spec/initContainers/*/resources/requests/memory"}
+#          ]
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: remove-cpu-memory-requests
+  annotations:
+    policies.kyverno.io/title: Remove CPU and Memory Requests
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Removes the `requests` field for both CPU and memory from the `resources`
+      section of all containers in incoming workloads within namespaces labeled
+      `opendatahub.io/dashboard: "true"`. This can be useful in specific
+      environments where resource requests are not enforced or managed differently.
+spec:
+  validationFailureAction: Enforce
+  # Process requests synchronously during admission control
+  background: false
+  rules:
+    - name: remove-requests
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  opendatahub.io/dashboard: "true"
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                resources:
+                  requests:
+                    cpu: 0
+                    memory: 0
+            initContainers:
+              - (name): "*"
+                resources:
+                  requests:
+                    cpu: 0
+                    memory: 0
+#      mutate:
+#        foreach:
+#          - list: "request.object.spec.containers"
+#            patchesJson6902: |-
+#              - op: replace
+#                path: "/spec/containers/{{elementIndex}}/resources/requests/cpu"
+#                value: 0
+#              - op: remove
+#                path: "/spec/containers/{{elementIndex}}/resources/requests/memory"
+#      mutate:
+#        patchStrategicMerge:
+#          spec:
+#            containers:
+#              - (name): "*"
+#                resources:
+#                  requests:
+#                    $patch: delete
+#                    cpu:
+#                    memory:

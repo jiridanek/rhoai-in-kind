@@ -78,12 +78,10 @@ jobs:
           kubectl create -k components/01-argocd
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
 
-      # not needed at the moment
-
-#      - name: Install Kyverno
-#        run: |
-#          kubectl create -k components/02-kyverno
-#          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
+      - name: Install Kyverno
+        run: |
+          kubectl create -k components/02-kyverno
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
 
       - name: Deploy fake CRDs
         run: kubectl apply -k components/crds
@@ -173,9 +171,11 @@ jobs:
           volumeBindingMode: WaitForFirstConsumer
           EOF
 
-      - name: Bring down Small workbench resource requests
-        run: |
-          components/patch-workbench-resource-requests.sh
+      # this is probably better done with Kyverno
+
+      #- name: Bring down Small workbench resource requests
+      #  run: |
+      #    components/patch-workbench-resource-requests.sh
 
       - name: Setup cypress
         run: |
