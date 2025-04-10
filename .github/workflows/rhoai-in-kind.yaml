@@ -29,39 +29,8 @@ jobs:
           cluster_name: kind
           config: components/00-kind-cluster.yaml
 
-      - name: Install ArgoCD CLI and the oc client and Istio
+      - name: Deploy stuff into Kubernetes
         run: python3 components/deploy.py
-
-      - name: Setup Gateway
-        run: kubectl apply -f components/06-gateway.yaml
-
-      - name: Install ArgoCD
-        run: |
-          kubectl create -k components/01-argocd
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s
-
-      - name: Install Kyverno
-        run: |
-          kubectl create -k components/02-kyverno
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s
-          oc wait --for=condition=Ready clusterpolicy --all
-
-      - name: Deploy fake CRDs
-        run: kubectl apply -k components/crds
-
-      - name: Deploy api-extension
-        run: |
-          kubectl apply -k components/api-extension
-
-          kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s
-
-      - if: "!cancelled()"
-        run: kubectl logs -n api-extension deployment/apiserver
-
-      - name: Check that API extension server works
-        run: timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'
-
-      - run: kubectl create namespace redhat-ods-applications
 
       - name: Login to ArgoCD
         run: |
@@ -114,7 +83,7 @@ jobs:
 
       - name: "Install local-path provisioner"
         run: |
-          set -Eeuxo pipefail
+          `set -Eeuxo pipefail`
           kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
           kubectl wait deployments --all --namespace=local-path-storage --for=condition=Available --timeout=100s
           # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/

@@ -50,10 +50,39 @@ def main():
 
         tf.defer(None, lambda _: sh(
             "kubectl wait -n istio-system --for=condition=programmed gateways.gateway.networking.k8s.io gateway"))
-    # export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io gateway -n istio-system -ojsonpath='{.status.addresses[0].value}')
+        # export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io gateway -n istio-system -ojsonpath='{.status.addresses[0].value}')
 
-    with tf:
-        pass
+    with gha_log_group("Setup Gateway"):
+        sh("kubectl apply -f components/06-gateway.yaml")
+
+    with gha_log_group("Install ArgoCD"):
+        sh("kubectl create -k components/01-argocd")
+        tf.defer(None, lambda _: sh("kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
+
+    with gha_log_group("Install Kyverno"):
+        sh("kubectl create -k components/02-kyverno")
+        tf.defer(None, lambda _: sh("kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
+
+    with gha_log_group("Deploy fake CRDs"):
+        sh("kubectl apply -k components/crds")
+
+    with gha_log_group("Deploy api-extension"):
+        sh("kubectl apply -k components/api-extension")
+        tf.defer(None, lambda _: sh("kubectl wait -n api-extension deployment/apiserver --for=condition=Available --timeout=100s"))
+
+        tf.defer(None, lambda _: sh("kubectl logs -n api-extension deployment/apiserver"))
+
+    with gha_log_group("Check that API extension server works"):
+        sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'")
+
+    with gha_log_group("Run kubectl create namespace redhat-ods-applications"):
+        sh("kubectl create namespace redhat-ods-applications")
+
+
+    with gha_log_group("Run deferred functions"):
+        with tf:
+            pass
 
 
 def sh(cmd: str, env: dict[str, str] | None = None):
