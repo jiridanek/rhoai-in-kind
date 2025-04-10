@@ -178,6 +178,15 @@ jobs:
       #  run: |
       #    components/patch-workbench-resource-requests.sh
 
+      - name: Install pnpm
+        run: |
+          # https://pnpm.io/installation#using-corepack
+          corepack enable pnpm
+          # https://github.com/pnpm/pnpm/issues/5344
+          corepack use pnpm@latest
+          corepack prepare pnpm@latest --activate
+        working-directory: odh-dashboard/frontend
+
       # https://pnpm.io/continuous-integration#github-actions
       - name: Use Node.js with pnpm caching
         uses: actions/setup-node@v4
@@ -193,11 +202,6 @@ jobs:
           sudo apt-get install -y xterm ncurses-bin
 
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
-          # https://pnpm.io/installation#using-corepack
-          corepack enable pnpm
-          # https://github.com/pnpm/pnpm/issues/5344
-          corepack use pnpm@latest
-          corepack prepare pnpm@latest --activate
           pnpm install
         working-directory: odh-dashboard/frontend
 
