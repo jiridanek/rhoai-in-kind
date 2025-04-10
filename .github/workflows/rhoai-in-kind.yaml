@@ -19,9 +19,6 @@ jobs:
           sparse-checkout: |
             frontend/
 
-      - name: Install ArgoCD CLI and the oc client
-        run: python3 components/deploy.py
-
       - name: Kubernetes KinD Cluster
         uses: helm/kind-action@v1
         with:
@@ -32,26 +29,8 @@ jobs:
           cluster_name: kind
           config: components/00-kind-cluster.yaml
 
-      # https://istio.io/latest/docs/setup/platform-setup/kind/
-      # https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#setup
-      # https://ryandeangraham.medium.com/istio-gateway-api-nodeport-c598a21c4c95
-      - name: Install Istio
-        run: |
-          # TLSRoute is considered "experimental"
-          # https://github.com/kubernetes-sigs/gateway-api/issues/2643
-          kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
-          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.2.1" | kubectl apply -f -; }
-
-          curl -L https://istio.io/downloadIstio | sh -
-          istio-${ISTIO_VERSION}/bin/istioctl install --set values.pilot.env.PILOT_ENABLE_ALPHA_GATEWAY_API=true --set profile=minimal -y
-
-          kubectl apply -f components/06-gateway.yaml
-
-          kubectl wait -n istio-system --for=condition=programmed gateways.gateway.networking.k8s.io gateway
-          export INGRESS_HOST=$(kubectl get gateways.gateway.networking.k8s.io gateway -n istio-system -ojsonpath='{.status.addresses[0].value}')
-        env:
-          ISTIO_VERSION: 1.25.1
-          TARGET_ARCH: x86_64
+      - name: Install ArgoCD CLI and the oc client and Istio
+        run: python3 components/deploy.py
 
       - name: Setup Gateway
         run: kubectl apply -f components/06-gateway.yaml
