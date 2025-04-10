@@ -166,6 +166,7 @@ metadata:
       `opendatahub.io/dashboard: "true"`. This can be useful in specific
       environments where resource requests are not enforced or managed differently.
 spec:
+  # # 'Audit' is safer to start. Change to 'Enforce' to block pods if mutation fails.
   validationFailureAction: Enforce
   # Process requests synchronously during admission control
   background: false
