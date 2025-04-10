@@ -7,9 +7,6 @@ jobs:
   rhoai-in-kind:
     runs-on: ubuntu-latest
 
-    env:
-      ARGOCD_VERSION: v2.14.9
-
     steps:
 
       - uses: actions/checkout@v4
@@ -22,22 +19,8 @@ jobs:
           sparse-checkout: |
             frontend/
 
-      - name: Install ArgoCD CLI
-        run: |
-          curl -sSL -o /tmp/argocd-${ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64
-          chmod +x /tmp/argocd-${ARGOCD_VERSION}
-          sudo mv /tmp/argocd-${ARGOCD_VERSION} /usr/local/bin/argocd
-          argocd version --client
-
-      - name: Install OC client
-        run: |
-          curl -L https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux.tar.gz \
-            -o /tmp/openshift-client-linux.tar.gz
-          tar -xzvf /tmp/openshift-client-linux.tar.gz oc
-          sudo mv ./oc /usr/local/bin/oc
-          rm -f /tmp/openshift-client-linux.tar.gz
-          
-          oc version
+      - name: Install ArgoCD CLI and the oc client
+        run: python3 components/deploy.py
 
       - name: Kubernetes KinD Cluster
         uses: helm/kind-action@v1
