@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -58,6 +59,20 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL.RawQuery = params.Encode()
 
+	if r.URL.Query().Get("code_challenge_method") != "" {
+		if strings.HasPrefix(r.Header.Get("Authorization"), "Basic ") {
+			redirectURL.RawQuery = params.Encode()
+			w.Header().Set("Location", redirectURL.String())
+			w.WriteHeader(http.StatusFound)
+			return
+		} else {
+			// https://github.com/openshift/library-go/blob/ce2ba53fb2a4b7318769480e897a0e506b7cb0c0/pkg/oauth/tokenrequest/request_token.go#L273
+			w.Header().Set("Www-Authenticate", "Basic realm=\"openshift\"")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+	}
+
 	if r.Method == "POST" {
 		w.Header().Set("Location", redirectURL.String())
 		w.WriteHeader(http.StatusTemporaryRedirect)
@@ -95,6 +110,8 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 type OauthTokenResponse struct {
 	Token       string `json:"token"`
 	AccessToken string `json:"access_token"`
+	// https://github.com/RangelReale/osincli/blob/fababb0555f21315d1a34af6615a16eaab44396b/access.go#L146C38-L146C48
+	TokenType string `json:"token_type"`
 }
 
 func handleToken(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +144,8 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Printf("Token expires At: %s\n", token.Status.ExpirationTimestamp.Format(time.RFC3339))
 		tokenResp := OauthTokenResponse{
+			// https://www.oauth.com/oauth2-servers/access-tokens/access-token-response/
+			TokenType:   "Bearer",
 			Token:       "a34a5f6",
 			AccessToken: token.Status.Token,
 		}

@@ -18,3 +18,18 @@ data:
   #  printf "ldap-admin1-passwd,ldap-user1-passwd" | base64
   users: bGRhcC1hZG1pbjEtcGFzc3dkLGxkYXAtdXNlcjEtcGFzc3dk
 type: Opaque
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift
+#---
+# https://127.0.0.1:8443/api/v1/namespaces/openshift/configmaps/motd
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+#  name: motd
+#  namespace: openshift
+#data:
+#  motd: |
+#    Welcome to OpenLDAP!

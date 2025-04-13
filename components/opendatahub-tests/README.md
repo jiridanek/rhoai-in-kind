@@ -21,6 +21,6 @@ curl -k https://127.0.0.1:8443/version
 ```
 
 ```shell
-oc login https://127.0.0.1:8443 --insecure-skip-tls-verify=true
-oc login https://127.0.0.1:8443 --certificate-authority=$(pwd)/nginx_certs/nginx.crt
+oc login https://127.0.0.1:8443 --insecure-skip-tls-verify=true -u bef -p lek
+oc login https://127.0.0.1:8443 --certificate-authority=$(pwd)/nginx_certs/nginx.crt  -u bef -p lek
 ```
