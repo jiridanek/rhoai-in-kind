@@ -47,6 +47,7 @@ jobs:
       - name: "Set up faked openshift oauth for oc client"
         run: |
           set -Eeuxo pipefail
+          oc apply -f components/opendatahub-tests/openldap.yaml
           pushd components/opendatahub-tests/nginx_certs
           ./gen.sh
           popd
