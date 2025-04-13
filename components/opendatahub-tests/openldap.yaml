@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openldap
+---
+# oc get secrets -n openldap openldap -o yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openldap
+  namespace: openldap
+data:
+  #  printf "secretpassword" | base64
+  adminpassword: c2VjcmV0cGFzc3dvcmQ=
+  #  printf "ldap-admin1,ldap-user1" | base64
+  passwords: bGRhcC1hZG1pbjEsbGRhcC11c2VyMQ==
+  #  printf "ldap-admin1-passwd,ldap-user1-passwd" | base64
+  users: bGRhcC1hZG1pbjEtcGFzc3dkLGxkYXAtdXNlcjEtcGFzc3dk
+type: Opaque
