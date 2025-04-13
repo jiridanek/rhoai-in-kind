@@ -51,7 +51,7 @@ jobs:
           ./gen.sh
           popd
           nginx -c "${PWD}/components/opendatahub-tests/nginx.conf" &
-          oc login -u pepa -p zdepa 127.0.0.1:8443
+          oc login --insecure-skip-tls-verify=true -u pepa -p zdepa 127.0.0.1:8443
 
       - name: Run workbenches tests
         run: |
