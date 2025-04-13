@@ -1,0 +1,60 @@
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  rhoai-in-kind:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: opendatahub-io/opendatahub-tests
+          ref: main
+          path: opendatahub-tests
+
+      - name: Kubernetes KinD Cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.27.0
+          # Dashboard tests fail on k8s 1.32
+          # https://hub.docker.com/r/kindest/node/tags
+          # Let's keep using same version as for dashboard then
+          node_image: "docker.io/kindest/node:v1.31.6"
+          cluster_name: kind
+          config: components/00-kind-cluster.yaml
+
+      - name: Deploy stuff into Kubernetes
+        run: python3 components/deploy.py
+
+      # https://docs.astral.sh/uv/guides/integration/github/#installation
+      # https://github.com/astral-sh/setup-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "opendatahub-tests/uv.lock"
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "opendatahub-tests/pyproject.toml"
+
+      - name: "Set up faked openshift oauth for oc client"
+        run: |
+          set -Eeuxo pipefail
+          pushd components/opendatahub-tests/nginx_certs
+          ./gen.sh
+          popd
+          nginx -c "${PWD}/components/opendatahub-tests/nginx.conf" &
+          oc login -u pepa -p zdepa 127.0.0.1:8443
+
+      - name: Run workbenches tests
+        run: |
+          set -Eeuxo pipefail
+          uv run pytest tests/workbenches
+        working-directory: opendatahub-tests

@@ -1,4 +1,6 @@
-```shell
+#!/usr/bin/env bash
+set -Eeuxo pipefail
+
 # Generate a private key
 openssl genpkey -algorithm RSA -out nginx.key
 
@@ -8,4 +10,3 @@ openssl req -new -key nginx.key -out nginx.csr -subj "/CN=localhost"
 
 # Generate the self-signed certificate (valid for 365 days)
 openssl x509 -req -days 365 -in nginx.csr -signkey nginx.key -out nginx.crt
-```
