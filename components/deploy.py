@@ -116,6 +116,10 @@ def main():
 
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")
+        tf.defer(None, lambda _: sh(
+            "oc wait --for=condition=Available deployment -l app=notebook-controller -n redhat-ods-applications --timeout=120s"))
+        tf.defer(None, lambda _: sh(
+            "oc wait --for=condition=Available deployment -l app=odh-notebook-controller -n redhat-ods-applications --timeout=120s"))
 
     with gha_log_group("Install Workbenches"):
         sh("kubectl apply -k components/08-workbenches")
