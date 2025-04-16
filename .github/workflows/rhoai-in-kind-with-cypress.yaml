@@ -11,10 +11,12 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # https://github.com/opendatahub-io/odh-dashboard/pull/4048
+      # antowaddle:cypress-RHOAIENG-23255
       - uses: actions/checkout@v4
         with:
-          repository: opendatahub-io/odh-dashboard
-          ref: main
+          repository: antowaddle/odh-dashboard
+          ref: cypress-RHOAIENG-23255
           path: odh-dashboard
           sparse-checkout: |
             frontend/
