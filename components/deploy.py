@@ -81,8 +81,16 @@ def main():
     with gha_log_group("Check that API extension server works"):
         tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
 
-    with gha_log_group("Run kubectl create namespace redhat-ods-applications"):
+    with gha_log_group("Run kubectl create namespaces redhat-ods-applications"):
         sh("kubectl get namespace redhat-ods-applications || kubectl create namespace redhat-ods-applications")
+
+    with gha_log_group("Setup rhods-notebooks namespace"):
+        # c.f. dashboard's validateNotebookNamespaceRoleBinding
+        # it will create rolebinding ${notebookNamespace}-image-pullers in dashboardNamespace
+        # and it needs a clusterrole system:image-puller to exist, which does not exsist on kind by default
+        sh("kubectl get namespace rhods-notebooks || kubectl create namespace rhods-notebooks")
+        # dummy verb and resource, just to have something there
+        sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io")
 
     with gha_log_group("Configure Argo applications"):
         sh("kubectl apply -f components/03-kf-pipelines.yaml")
@@ -94,6 +102,7 @@ def main():
 
     with gha_log_group("Install Kyverno policies"):
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/policy.yaml; do sleep 1; done'")
+        sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
         tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Run deferred functions"):

@@ -39,8 +39,43 @@ func main() {
 	http.HandleFunc("/token", handleToken)
 	http.HandleFunc("/userinfo", handleUserInfo)
 	http.HandleFunc("/review", handleReview)
+
+	// generate self-signed cert
+	cert, key, err := generateSelfSignedCert("localhost")
+	if err != nil {
+		log.Fatal(err)
+	}
+	certFile := "cert.pem"
+	keyFile := "key.pem"
+	err = os.WriteFile(certFile, cert, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = os.WriteFile(keyFile, key, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// TODO(jdanek): avoid writing stuff on disk
+	//server := http.Server{}
+	//tlsListener, err := tls.NewListener("tcp", "0.0.0.0:8081", cert, key)
+	//server.Serve(tlsListener)
+
+	done := make(chan struct{})
+
 	log.Printf("listening on %s...", address)
-	log.Fatal(http.ListenAndServe(address, nil))
+	go func() {
+		log.Fatal(http.ListenAndServe(address, nil))
+		done <- struct{}{}
+	}()
+
+	httpsAddr := "0.0.0.0:8081"
+	log.Printf("listening on %s...", httpsAddr)
+	go func() {
+		log.Fatal(http.ListenAndServeTLS(httpsAddr, certFile, keyFile, nil))
+		done <- struct{}{}
+	}()
+
+	<-done
 }
 
 func handleAuth(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +112,8 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", redirectURL.String())
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	} else {
+		// has to satisfy all ods-ci and cypress-e2e ideas about what the login dialog looks like
+		// https://github.com/red-hat-data-services/ods-ci/blob/1bdb64b54cec976b13bb1a1af027875400dd24fa/ods_ci/tests/Resources/Page/LoginPage.robot#L1-L0
 		tmplt := template.Must(template.New("login html").Parse(`
 <!DOCTYPE html>
 <html>
@@ -85,12 +122,19 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 <title>oauth-server</title>
 </head>
 <body>
+<button onclick="">Log in with OpenShift</button>
+<p>Log in with</p>
 <ul>
 <li><a href="" role="link" name="adm-auth">adm-auth</a></li>
+<li><a href="" role="link" name="ldap-provider-qe">ldap-provider-qe</a></li>
 </ul>
+<div class="pf-c-login">
+<!-- div must not be empty, because an empty div is not considered "visible" by selenium/robot -->
+<p>Log in to your account</p>
+</div>
 <form action="{{ .Query }}" method="post">
-<input type="text" name="username" placeholder="kube-admin" />
-<input type="password" name="password" placeholder="" />
+<input type="text" name="username" id="inputUsername" placeholder="kube-admin" />
+<input type="password" name="password" id="inputPassword" placeholder="" />
 <input type="submit" value="Login">
 </form>
 </body>

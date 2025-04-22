@@ -51,6 +51,7 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
+            - containerPort: 8081
           env:
             - name: username
               value: kubernetes-admin
@@ -74,12 +75,22 @@ metadata:
   name: oauth-server
   namespace: oauth-server
 spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+    - IPv4
+  ipFamilyPolicy: SingleStack
   selector:
     app: oauth-server
   ports:
     - protocol: TCP
       port: 8080
       targetPort: 8080
+      name: http
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      name: https
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -95,6 +106,23 @@ spec:
     - backendRefs:
         - name: oauth-server
           port: 8080
+---
+# dig +tcp @127.0.0.1 -p 5353 kube-dns.kube-system.svc.cluster.local
+# dig +tcp @127.0.0.1 -p 5353 oauth-server-tls.redhat-ods-applications.svc.cluster.local
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: oauth-server-tls
+  namespace: oauth-server
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+  hostnames: ["oauth-server.127.0.0.1.sslip.io"]
+  rules:
+    - backendRefs:
+        - name: oauth-server
+          port: 8081
 
 ## http://10.89.0.3/auth?approval_prompt=force&client_id=system%3Aserviceaccount%3Ajdanek%3Ads-pipeline-ui-sample&redirect_uri=https%3A%2F%2Flocalhost%3A8443%2Foauth%2Fcallback&response_type=code&scope=user%3Ainfo+user%3Acheck-access&state=fa2cbd33489ff7372ec1dd9e5af42277%3A%2F
 #

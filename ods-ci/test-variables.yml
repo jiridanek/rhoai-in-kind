@@ -1,0 +1,97 @@
+ODH_DASHBOARD_URL: "https://rhods-dashboard.127.0.0.1.sslip.io"
+TEST_USER:
+  AUTH_TYPE: ldap-provider-qe
+  USERNAME: ldap-admin1
+  PASSWORD: password
+TEST_USER_3:
+  AUTH_TYPE: ldap-provider-qe
+  USERNAME: ldap-user2
+  PASSWORD: password
+OCP_ADMIN_USER:
+  AUTH_TYPE: htpasswd-cluster-admin
+  USERNAME: htpasswd-cluster-admin-user
+  PASSWORD: password
+S3:
+  AWS_ACCESS_KEY_ID: AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY: AWS_SECRET_ACCESS_KEY
+  AWS_DEFAULT_ENDPOINT: https://s3.amazonaws.com/
+  AWS_DEFAULT_REGION: us-east-1
+  BUCKET_1:
+    NAME: ods-ci-s3
+    REGION: us-east-1
+    ENDPOINT: https://s3.amazonaws.com/
+  BUCKET_2:
+    NAME: ods-ci-ds-pipelines
+    REGION: us-east-1
+    ENDPOINT: https://s3.amazonaws.com/
+  BUCKET_3:
+    NAME: ods-ci-wisdom
+    REGION: us-east-2
+    ENDPOINT: https://s3.us-east-2.amazonaws.com/
+  BUCKET_4:
+    NAME: ods-ci-pachyderm
+    REGION: us-east-1
+    ENDPOINT: https://s3.amazonaws.com/
+  BUCKET_5:
+    NAME: rhoai-dw
+    REGION: us-east-1
+    ENDPOINT: https://s3.amazonaws.com/
+PIP_INDEX_URL: https://pypi.org/simple
+PIP_TRUSTED_HOST: pypi.org
+OCI_SECRET_DETAILS_FILE: /home/cloud-user/jenkins/workspace/cypress/dashboard-tests/odhcluster/config.json
+BROWSER:
+  NAME: headlesschrome
+  OPTIONS: add_argument("--ignore-certificate-errors");add_argument("window-size=1920,1024");add_argument('--no-sandbox');add_argument('--headless');add_argument('--disable-gpu');add_argument('--disable-dev-shm-usage')
+TEST_CLUSTERS:
+  ods-qe-01:
+    OCP_CONSOLE_URL: https://console-openshift-console.apps.some-cluster.some-platform.rh-ods.com/
+    ODH_DASHBOARD_URL: https://rhods-dashboard.127.0.0.1.sslip.io/
+    TEST_USER:
+      AUTH_TYPE: ldap-provider-qe
+      USERNAME: ldap-admin1
+      PASSWORD: password
+    OCP_ADMIN_USER:
+      AUTH_TYPE: htpasswd-cluster-admin
+      USERNAME: htpasswd-cluster-admin-user
+      PASSWORD: password
+TEST_USER_2:
+  AUTH_TYPE: ldap-provider-qe
+  USERNAME: ldap-admin2
+  PASSWORD: password
+TEST_USER_4:
+  AUTH_TYPE: ldap-provider-qe
+  USERNAME: ldap-user9
+  PASSWORD: password
+SERVICE_ACCOUNT:
+  NAME: rhods-test-runner
+  FULL_NAME: system:serviceaccount:redhat-ods-applications:rhods-test-runner
+COMPONENTS:
+  codeflare: Managed
+  dashboard: Managed
+  datasciencepipelines: Managed
+  kserve: Managed
+  kueue: Managed
+  modelmeshserving: Managed
+  ray: Managed
+  trainingoperator: Removed
+  workbenches: Managed
+  modelregistry: Managed
+  trustyai: Managed
+PRODUCT: RHODS
+APPLICATIONS_NAMESPACE: redhat-ods-applications
+MONITORING_NAMESPACE: redhat-ods-monitoring
+OPERATOR_NAME: rhods-operator
+OPERATOR_NAMESPACE: redhat-ods-operator
+NOTEBOOKS_NAMESPACE: rhods-notebooks
+OPENSHIFT_PIPELINES_CHANNEL: latest
+TEST_CLUSTER_NAME: dashboard-e2e
+#TEST_CLUSTER_URL: https://console-openshift-console.apps.some-cluster.some-platform.rh-ods.com
+
+# used to determine managed/self-managed
+# ${matches}=    Get Regexp Matches    ${OCP_CONSOLE_URL}    rh-ods
+OCP_CONSOLE_URL: https://console-openshift-console.apps.some-cluster.some-platform.rh-ods.com
+
+#OCP_API_URL: https://api.some-cluster.some-platform.rh-ods.com:6443
+RHODS_PROMETHEUS_URL: PROMETHEUS_URL
+RHODS_PROMETHEUS_TOKEN: PROMETHEUS_TOKEN
+ODH_DASHBOARD_PROJECT_NAME: Open Data Hub
