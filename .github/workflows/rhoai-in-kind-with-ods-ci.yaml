@@ -56,8 +56,14 @@ jobs:
           while ! nc -z 127.0.0.1 8443; do sleep 1; done
           oc login --insecure-skip-tls-verify=true -u htpasswd-cluster-admin-user -p password 127.0.0.1:8443
 
+      - name: Prepare test-variables.yml
+        run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
+
       - name: Run ods-ci tests
         run: |
           set -Eeuxo pipefail
-          ods_ci/run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/test-variables.yml --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI ods-ci/ods_ci/tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot'
-        working-directory: ods-ci
+          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI'
+        # the location is important and it's not worth it to change it
+        # * poetry looks for the lock file in what is the current directory or its parents
+        # * by default TEST_CASE_FILE=tests/Tests
+        working-directory: ods-ci/ods_ci
