@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: poetry
-          cache-dependency-path: "opendatahub-tests/poetry.lock"
+          cache-dependency-path: "ods-ci/poetry.lock"
 
       - name: "Set up faked openshift oauth for oc client"
         run: |
