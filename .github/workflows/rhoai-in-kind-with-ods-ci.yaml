@@ -17,19 +17,19 @@ jobs:
           ref: master
           path: ods-ci
 
-#      - name: Kubernetes KinD Cluster
-#        uses: helm/kind-action@v1
-#        with:
-#          version: v0.27.0
-#          # Dashboard tests fail on k8s 1.32
-#          # https://hub.docker.com/r/kindest/node/tags
-#          # Let's keep using same version as for dashboard then
-#          node_image: "docker.io/kindest/node:v1.31.6"
-#          cluster_name: kind
-#          config: components/00-kind-cluster.yaml
-#
-#      - name: Deploy stuff into Kubernetes
-#        run: python3 components/deploy.py
+      - name: Kubernetes KinD Cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.27.0
+          # Dashboard tests fail on k8s 1.32
+          # https://hub.docker.com/r/kindest/node/tags
+          # Let's keep using same version as for dashboard then
+          node_image: "docker.io/kindest/node:v1.31.6"
+          cluster_name: kind
+          config: components/00-kind-cluster.yaml
+
+      - name: Deploy stuff into Kubernetes
+        run: python3 components/deploy.py
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
