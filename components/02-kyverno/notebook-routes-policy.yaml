@@ -84,9 +84,9 @@ spec:
                   kubernetes.io/metadata.name: rhods-notebooks
       preconditions:
         all:
-          - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
-            operator: Equals
-            value: Notebook
+          #- key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
+          #  operator: Equals
+          #  value: Notebook
           - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
             operator: NotEquals
             value: ""
@@ -96,20 +96,21 @@ spec:
         name: "{{ request.object.metadata.name }}"
         namespace: "{{ request.object.metadata.namespace }}"
         synchronize: true
+        background: false
         data:
-#          metadata:
-#            ownerReferences:
-#              - apiVersion: kubeflow.org/v1
-#                kind: Notebook
-#                # Use the label 'notebook-name' from the Route for the owner reference name
-#                name: "{{ request.object.metadata.labels.\"notebook-name\" }}"
-#                blockOwnerDeletion: true
-#                controller: false
+          #          metadata:
+          #            ownerReferences:
+          #              - apiVersion: kubeflow.org/v1
+          #                kind: Notebook
+          #                # Use the label 'notebook-name' from the Route for the owner reference name
+          #                name: "{{ request.object.metadata.labels.\"notebook-name\" }}"
+          #                blockOwnerDeletion: true
+          #                controller: false
           spec:
             parentRefs:
               - name: "gateway"
                 namespace: "istio-system"
-#                sectionName: "https"
+                #                sectionName: "https"
             hostnames:
               # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
               # https://github.com/kyverno/kyverno/issues/4206
@@ -117,8 +118,8 @@ spec:
             rules:
               - backendRefs:
                   - name: "{{ request.object.spec.to.name }}"
-                    kind: Service
                     port: 443 # routes and tlsroutes may differ whether named ports are allowed
+                    #                    kind: Service
 
     - name: update-route-host-for-notebook
       match: # Use the same match conditions as the generate rule!
@@ -135,9 +136,9 @@ spec:
           - key: "{{ request.object.spec.host || '' }}"
             operator: Equals
             value: ""
-          - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
-            operator: Equals
-            value: Notebook
+          #- key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
+          #  operator: Equals
+          #  value: Notebook
           - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
             operator: NotEquals
             value: ""
