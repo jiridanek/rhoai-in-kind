@@ -59,6 +59,7 @@ jobs:
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
 
+      # NOTE: Tests in ods-ci often depend on what's before them in the file, so it's best to run file-by-file
       - name: Run ods-ci tests
         run: |
           set -Eeuxo pipefail
