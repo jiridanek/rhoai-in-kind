@@ -1,4 +1,3 @@
-# clusterrole.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -56,7 +55,7 @@ subjects:
     name: kyverno-reports-controller
     namespace: kyverno
 ---
-apiVersion: kyverno.io/v1
+apiVersion: kyverno.io/v2beta1
 kind: ClusterPolicy
 metadata:
   name: manage-notebook-gateway-routes
@@ -83,14 +82,14 @@ spec:
               namespaceSelector:
                 matchLabels:
                   kubernetes.io/metadata.name: rhods-notebooks
-              preconditions:
-                all:
-                  - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
-                    operator: Equals
-                    value: Notebook
-                  - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
-                    operator: NotEquals
-                    value: ""
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
+            operator: Equals
+            value: Notebook
+          - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
+            operator: NotEquals
+            value: ""
       generate:
         apiVersion: gateway.networking.k8s.io/v1alpha2 # TODO(jdanek): adjust if using v1beta1 or v1
         kind: TLSRoute
@@ -130,17 +129,18 @@ spec:
               namespaceSelector:
                 matchLabels:
                   kubernetes.io/metadata.name: rhods-notebooks
-              preconditions:
-                all:
-                  - key: "{{ request.object.spec.host || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
-                    operator: Equals
-                    value: Notebook
-                  - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
-                    operator: NotEquals
-                    value: ""
+            # Preconditions outside 'resources'
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.host || '' }}"
+            operator: Equals
+            value: ""
+          - key: "{{ request.object.metadata.ownerReferences[?(@.kind == 'Notebook')].kind || '' }}"
+            operator: Equals
+            value: Notebook
+          - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
+            operator: NotEquals
+            value: ""
       mutate:
         patchStrategicMerge:
           spec:
