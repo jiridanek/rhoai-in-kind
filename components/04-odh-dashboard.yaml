@@ -30,6 +30,26 @@ spec:
     path: manifests/rhoai/onprem
     targetRevision: HEAD
     kustomize:
+      # https://github.com/red-hat-data-services/odh-dashboard/blob/131c0da21d6434af027634e861a157f2a501af78/Dockerfile.konflux#L24-L28
+      patches:
+        # add / replace / remove
+        - patch: |-
+            - op: replace
+              path: /spec/template/spec/containers/0/env
+              value:
+                  - name: IMAGE_REPO
+                    value: quay.io/jdanek/odh-dashboard
+                  - name: ODH_PRODUCT_NAME
+                    value: "Red Hat OpenShift AI"
+                  - name: DOC_LINK
+                    value: "https://docs.redhat.com/en/documentation/red_hat_openshift_ai/"
+                  - name: SUPPORT_LINK
+                    value: "https://access.redhat.com/support/cases/#/case/new/open-case?caseCreate=true"
+                  - name: COMMUNITY_LINK
+                    value: ""
+          target:
+            kind: Deployment
+            name: rhods-dashboard
       images:
         - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
       replicas:
