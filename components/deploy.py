@@ -19,28 +19,29 @@ def main():
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
 
-    with gha_log_group("Install ArgoCD CLI"):
-        ARGOCD_VERSION = "v2.14.9"
-        sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-linux-amd64")
-        sh(f"chmod +x /tmp/argocd-{ARGOCD_VERSION}")
-        sh(f"sudo mv /tmp/argocd-{ARGOCD_VERSION} /usr/local/bin/argocd")
-        sh("argocd version --client")
+    if "CI" in os.environ:
+        with gha_log_group("Install ArgoCD CLI"):
+            ARGOCD_VERSION = "v2.14.9"
+            sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-$(go env GOOS)-$(go env GOARCH)")
+            sh(f"chmod +x /tmp/argocd-{ARGOCD_VERSION}")
+            sh(f"sudo mv /tmp/argocd-{ARGOCD_VERSION} /usr/local/bin/argocd")
+            sh("argocd version --client")
 
-    with gha_log_group("Install OC client"):
-        sh("curl -L https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux.tar.gz \
-                                                               -o /tmp/openshift-client-linux.tar.gz")
-        sh("tar -xzvf /tmp/openshift-client-linux.tar.gz oc")
-        sh("sudo mv ./oc /usr/local/bin/oc")
-        sh("rm -f /tmp/openshift-client-linux.tar.gz")
+        with gha_log_group("Install OC client"):
+            sh("curl -L https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux.tar.gz \
+                                                                   -o /tmp/openshift-client-linux.tar.gz")
+            sh("tar -xzvf /tmp/openshift-client-linux.tar.gz oc")
+            sh("sudo mv ./oc /usr/local/bin/oc")
+            sh("rm -f /tmp/openshift-client-linux.tar.gz")
 
-        sh("oc version")
+            sh("oc version")
 
     # https://istio.io/latest/docs/setup/platform-setup/kind/
     # https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#setup
     # https://ryandeangraham.medium.com/istio-gateway-api-nodeport-c598a21c4c95
     with gha_log_group("Install Istio"):
         ISTIO_VERSION = "1.25.1"
-        TARGET_ARCH = "x86_64"
+        TARGET_ARCH = sh("arch", capture_output=True).stdout.strip()
 
         # TLSRoute is considered "experimental"
         # https://github.com/kubernetes-sigs/gateway-api/issues/2643
@@ -63,7 +64,7 @@ def main():
         sh("kubectl apply -f components/06-gateway.yaml")
 
     with gha_log_group("Install ArgoCD"):
-        sh("kubectl create -k components/01-argocd")
+        sh("kubectl apply -k components/01-argocd")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
 
@@ -81,7 +82,7 @@ def main():
         tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
 
     with gha_log_group("Run kubectl create namespace redhat-ods-applications"):
-        sh("kubectl create namespace redhat-ods-applications")
+        sh("kubectl get namespace redhat-ods-applications || kubectl create namespace redhat-ods-applications")
 
     with gha_log_group("Configure Argo applications"):
         sh("kubectl apply -f components/03-kf-pipelines.yaml")
@@ -168,19 +169,23 @@ def main():
             pass
 
 
-def sh(cmd: str, env: dict[str, str] | None = None, input: str | None = None):
+def sh(cmd: str, env: dict[str, str] | None = None, input: str | None = None, **kwargs) -> subprocess.CompletedProcess[str]:
     """Runs a shell command."""
     env = env or {}
     print(f"$ {cmd}", file=sys.stdout)
     sys.stdout.flush()
-    subprocess.run(
-        "set -Eeuxo pipefail; " + cmd,
-        shell=True, executable="/bin/bash",
+    completed_process = subprocess.run(
+        f"set -Eeuxo pipefail; {cmd}",
+        shell=True,
+        executable="/bin/bash",
         env={**os.environ, **env},
         input=input,
-        check=True, text=True,
+        check=True,
+        text=True,
+        **kwargs,
     )
     sys.stdout.flush()
+    return completed_process
 
 
 # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#grouping-log-lines
