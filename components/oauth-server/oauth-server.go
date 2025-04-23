@@ -88,16 +88,21 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	params := redirectURL.Query()
 	params.Set("state", r.URL.Query().Get("state"))
 
+	generatedCode := fmt.Sprintf("%d", rand.Int())
+	params.Set("code", generatedCode)
+
+	var username string = ""
 	if r.Method == "POST" {
 		err := r.ParseForm()
 		if err != nil {
 			panic(err)
 		}
+		username = r.Form.Get("username")
 	}
-
-	generatedCode := fmt.Sprintf("%d", rand.Int())
-	code[generatedCode] = r.Form.Get("username")
-	params.Set("code", generatedCode)
+	if user, _, ok := r.BasicAuth(); ok {
+		username = user
+	}
+	code[generatedCode] = username
 
 	redirectURL.RawQuery = params.Encode()
 
