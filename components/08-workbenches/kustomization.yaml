@@ -6,7 +6,10 @@ kind: Kustomization
 # https://github.com/kubernetes-sigs/kustomize/issues/3742
 namespace: redhat-ods-applications
 resources:
-#  - git@github.com:opendatahub-io/notebooks.git/manifests/base/?timeout=90s
+  # Kyverno is responsible for setting status
+  # have to use rhds manifests because some images have different names there
+  # https://github.com/kubernetes-sigs/kustomize/blob/master/examples/remoteBuild.md#examples
+  - https://github.com/red-hat-data-services/notebooks//manifests/base/?timeout=90s&ref=main
 #  - git@github.com:rhoai-ide-konflux/notebooks.git/manifests/base/?ref=manifests&timeout=90s
-  - minimal.yaml
-  - code-server.yaml
+#  - minimal.yaml
+#  - code-server.yaml
