@@ -11,7 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         test_case:
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
@@ -19,12 +18,15 @@ jobs:
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
 
+          # logs into openshift web console which we don't have here
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
+
           # can't be checked because I'm deleting resource requests with Kyverno
           #- "tests/Tests/0500__ide/0500__ide_deployment_cr_checks.robot"
 
           # everything's excluded in this one
           # > [ ERROR ] Suite 'Plugin-Verification' contains no tests not matching tags 'TBC', 'AutomationBug', 'ProductBug', 'Dashboard', 'deprecatedTest' or 'ExcludeOnRHOAI'.
-          # - "tests/Tests/0500__ide/0501__ide_jupyterhub/plugin-verification.robot"
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/plugin-verification.robot"
 
     steps:
 
