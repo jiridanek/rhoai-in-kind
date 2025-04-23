@@ -16,12 +16,12 @@ jobs:
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/plugin-verification.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
           - "tests/Tests/0500__ide/0500__ide_deployment_cr_checks.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
           # everything's excluded in this one
           # > [ ERROR ] Suite 'Plugin-Verification' contains no tests not matching tags 'TBC', 'AutomationBug', 'ProductBug', 'Dashboard', 'deprecatedTest' or 'ExcludeOnRHOAI'.
-          # - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
+          # - "tests/Tests/0500__ide/0501__ide_jupyterhub/plugin-verification.robot"
 
     steps:
 
