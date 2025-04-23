@@ -1,5 +1,22 @@
 # There _has_ to be `status:` and there have to be conditions, otherwise the dashboard does not load
-
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redhat-ods-operator
+---
+# oc get csv -n redhat-ods-operator | grep "rhods-operator" | awk -F ' {2,}' '{print $3}'
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: rhods-operator.2.13.0
+  namespace: redhat-ods-operator
+spec:
+  displayName: Red Hat OpenShift AI
+  version: 2.13.0
+  replaces: rhods-operator.2.12.0
+status:
+  phase: Succeeded
+---
 apiVersion: dscinitialization.opendatahub.io/v1
 kind: DSCInitialization
 metadata:

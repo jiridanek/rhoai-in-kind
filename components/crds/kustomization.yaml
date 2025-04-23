@@ -1,3 +1,5 @@
+# here's a quite nice doc page for browsing CRDs:
+# https://kubespec.dev/kyverno/kyverno.io/v2beta1/ClusterPolicy
 ---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -10,6 +12,7 @@ resources:
   - dsci.yaml
   - imagestream.yaml
   - buildconfig.yaml
+  - clusterserviceversion.yaml
 #  - servingruntime.yaml
 #  - inferenceservice.yaml
 #  - auth.yaml
