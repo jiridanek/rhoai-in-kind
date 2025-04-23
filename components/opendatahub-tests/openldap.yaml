@@ -14,9 +14,9 @@ data:
   #  printf "secretpassword" | base64
   adminpassword: c2VjcmV0cGFzc3dvcmQ=
   #  printf "ldap-admin1,ldap-user1" | base64
-  passwords: bGRhcC1hZG1pbjEsbGRhcC11c2VyMQ==
+  users: bGRhcC1hZG1pbjEsbGRhcC11c2VyMQ==
   #  printf "ldap-admin1-passwd,ldap-user1-passwd" | base64
-  users: bGRhcC1hZG1pbjEtcGFzc3dkLGxkYXAtdXNlcjEtcGFzc3dk
+  passwords: bGRhcC1hZG1pbjEtcGFzc3dkLGxkYXAtdXNlcjEtcGFzc3dk
 type: Opaque
 ---
 apiVersion: v1
