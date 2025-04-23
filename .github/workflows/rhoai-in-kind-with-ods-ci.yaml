@@ -13,6 +13,8 @@ jobs:
         test_case:
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
