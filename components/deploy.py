@@ -7,6 +7,7 @@ import os
 import contextlib
 import sys
 import subprocess
+import tempfile
 import textwrap
 import time
 from typing import Callable
@@ -136,7 +137,20 @@ def main():
         tf.defer(None, lambda _: wait_for_webhook_service_endpoint())
 
     with gha_log_group("Install Workbenches"):
-        sh("kubectl apply -k components/08-workbenches")
+        # error unmarshaling JSON: while decoding JSON: json: unknown field "apiGroup"
+        kustomize_version="5.0.3"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            kustomize_tar=f"{tmp_dir}/kustomize-{kustomize_version}.tar.gz"
+            kustomize_bin=f"{tmp_dir}/kustomize-{kustomize_version}"
+            print("---------------------------------------------------------------------------------")
+            print(f"Download kustomize '{kustomize_version}'")
+            print("---------------------------------------------------------------------------------")
+            sh(f'wget --output-document="{kustomize_tar}" "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v{kustomize_version}/kustomize_v{kustomize_version}_$(go env GOOS)_$(go env GOARCH).tar.gz"')
+            sh(f'tar -C "{tmp_dir}" -xvf "{kustomize_tar}"')
+            sh(f'mv "{tmp_dir}/kustomize" "{kustomize_bin}"')
+
+            sh(f'"{kustomize_bin}" version')
+            sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
 
     with gha_log_group("Install Service CA Operator"):
         sh("kubectl label node --all node-role.kubernetes.io/master=")
