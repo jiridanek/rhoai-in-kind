@@ -152,6 +152,10 @@ def main():
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
         sh("timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
+        tf.defer(None, lambda _: sh(
+            "kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n redhat-ods-applications --timeout=120s"))
+        # wait for webpage availability
+        tf.defer(None, lambda _: sh('''timeout 60s bash -c 'while ! curl -k "https://rhods-dashboard.127.0.0.1.sslip.io/"; do sleep 2; done' '''))
 
     with gha_log_group("Set fake DSC and DSCI"):
         sh("kubectl apply -f components/07-dsc-dsci.yaml")
