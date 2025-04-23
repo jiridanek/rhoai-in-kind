@@ -54,7 +54,7 @@ jobs:
           popd
           nginx -c "${PWD}/components/opendatahub-tests/nginx.conf" &
           while ! nc -z 127.0.0.1 8443; do sleep 1; done
-          oc login --insecure-skip-tls-verify=true -u htpasswd-cluster-admin-user -p password 127.0.0.1:8443
+          oc login --insecure-skip-tls-verify=true -u admin-user -p password 127.0.0.1:8443
 
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
