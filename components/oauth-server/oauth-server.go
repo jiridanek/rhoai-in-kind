@@ -27,7 +27,7 @@ import (
 var (
 	message string
 	address string
-	code    []string
+	code    = make(map[string]string)
 )
 
 func init() {
@@ -88,8 +88,15 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	params := redirectURL.Query()
 	params.Set("state", r.URL.Query().Get("state"))
 
+	if r.Method == "POST" {
+		err := r.ParseForm()
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	generatedCode := fmt.Sprintf("%d", rand.Int())
-	code = append(code, generatedCode)
+	code[generatedCode] = r.Form.Get("username")
 	params.Set("code", generatedCode)
 
 	redirectURL.RawQuery = params.Encode()
@@ -164,6 +171,7 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 	if !codeValid(exchangeCode) {
 		w.WriteHeader(http.StatusUnauthorized)
 	} else {
+		serviceAccountName := code[exchangeCode]
 		invalidateCode(r.URL.Query().Get("code"))
 		// https://github.com/openshift/oauth-proxy/blob/3d12ccbee45c5d4bcea8c232867df58a60c4382b/providers/openshift/provider.go#L578C29-L578C41
 		// kubectl create serviceaccount -n oauth-server admin-user
@@ -182,7 +190,7 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 				ExpirationSeconds: ptr.To(int64(168 * time.Hour / time.Second)), // 168 hours in seconds
 			},
 		}
-		token, err := clientset.CoreV1().ServiceAccounts("oauth-server").CreateToken(context.TODO(), "admin-user", tokenRequest, metav1.CreateOptions{})
+		token, err := clientset.CoreV1().ServiceAccounts("oauth-server").CreateToken(context.TODO(), serviceAccountName, tokenRequest, metav1.CreateOptions{})
 		if err != nil {
 			panic(err.Error())
 		}
@@ -232,22 +240,11 @@ func handleReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func codeValid(codeInReq string) bool {
-	for _, v := range code {
-		fmt.Println("found", v, "looking for", codeInReq)
-		if v == codeInReq {
-			return true
-		}
-	}
-	return false
+	_, ok := code[codeInReq]
+	return ok
 }
 
 func invalidateCode(codeInReq string) {
 	// not thread-safe
-	var newListOfValidCodes []string
-	for _, v := range code {
-		if v != codeInReq {
-			newListOfValidCodes = append(newListOfValidCodes, v)
-		}
-	}
-	code = newListOfValidCodes
+	delete(code, codeInReq)
 }
