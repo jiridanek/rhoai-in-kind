@@ -1,0 +1,239 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno-imagestream-manager
+rules:
+  - apiGroups:
+      - image.openshift.io
+    resources:
+      - imagestreams
+      - imagestreams/status
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+      - create
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kyverno-bind-imagestream-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kyverno-imagestream-manager
+subjects:
+  - kind: ServiceAccount
+    name: kyverno-reports-controller
+    namespace: kyverno
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy # Use Policy for a specific namespace
+metadata:
+  name: mutate-imagestream-add-simplified-status
+  annotations:
+    policies.kyverno.io/title: Add Simplified ImageStream Status from Spec
+    policies.kyverno.io/category: Mutation
+    policies.kyverno.io/severity: medium # Medium due to potential conflicts with controller
+    policies.kyverno.io/subject: ImageStream, Status
+    policies.kyverno.io/minversion: 1.6.0 # Requires foreach
+    policies.kyverno.io/description: >-
+      Mutates ImageStream resources on create/update to add a simplified status.tags
+      field derived directly from spec.tags.
+      WARNING: Mutating the status subresource is generally discouraged as it's
+      controller-managed. This policy cannot replicate the true status (e.g., 'created' timestamps)
+      populated by the OpenShift Image Registry controller and may conflict with it.
+      It primarily extracts tag name, image reference, SHA, and generation from the spec.
+spec:
+  validationFailureAction: Audit # Use Audit to avoid blocking requests if mutation fails unexpectedly
+  background: false # Mutations should generally run in the foreground
+  rules:
+    - name: mutate-imagestream-add-simplified-status-tags
+      match:
+        any:
+          - resources:
+              kinds:
+                - ImageStream
+      # Preconditions can help avoid unnecessary mutations, e.g., only if status is missing
+      # preconditions:
+      #   all:
+      #   - key: "{{ request.object.status || '' }}" # Check if status exists
+      #     operator: Equals
+      #     value: ""
+      mutate:
+        foreach:
+          - list: "request.object.spec.tags"
+            patchesJson6902: |-
+              - path: /status/tags/-
+                op: add
+                value:
+                  tag: "{{ element.name }}"
+                  items:
+                    - dockerImageReference: "{{ element.from.name || '' }}"
+                      image: "{{ split(element.from.name || '', '@')[1] || '' }}"
+                      generation: "{{ element.generation || '' }}"
+                      created: "{{ time_now_utc() }}"
+#            patchStrategicMerge:
+#              status:
+#                tags:
+#                  - tag: "{{ element.name }}"
+#                    image: "baf"
+#                  # The '(+)' prefix ensures we add to the array or create it.
+#                  # We use the tag name from the spec element as the identifier key.
+#                  - (+tag): "{{ element.name }}"
+#                    # Directly add fields derived from the current element in spec.tags
+#                    # Assumes element.from.name exists and is in format 'repo@sha256:hash'
+#                    dockerImageReference: "{{ element.from.name || '' }}"
+#                    # Extract the SHA part using split. Add error handling if format varies.
+#                    # Using `contains` and conditional logic for robustness (requires newer Kyverno versions)
+#                    # Simplified version (less robust): image: "{{ split(element.from.name, '@')[1] || '' }}"
+#                    #image: "{{ contains(element.from.name || '', '@') && split(element.from.name, '@')[1] || 'parse_error' }}"
+#                    #generation: "{{ element.generation || '' }}"
+#                    # Note: 'created' timestamp and 'items' array from the example cannot be generated here.
+
+
+#apiVersion: kyverno.io/v1
+#kind: ClusterPolicy
+#metadata:
+#  name: generate-imagestream-status
+#spec:
+#  background: false
+#  rules:
+#    - name: generate-status
+#      match:
+#        any:
+#          - resources:
+#              kinds:
+#                - ImageStream
+#      mutate:
+#        #        patchStrategicMerge:
+#        #          status:
+#        #            tags: []
+#        foreach:
+#          - list: "request.object.spec.tags"
+##            context:
+##              - name: imageRef
+##                object: "{{ element.from.name }}"
+#            patchJson6902:
+#              - op: add
+#                path: "/status/tags/-"
+#                value:
+#                  tag: "{{ element.name }}"
+#                  items:
+#                    - dockerImageReference: "{{ imageRef }}"
+#                      image: "{{ imageRef.split('@')[1] }}"
+#                      generation: "{{ element.generation }}"
+#                      created: "{{ time_now_utc() }}"
+#      foreach:
+#        - list: "request.object.spec.tags"
+#          variable: "tag"
+#          context:
+#            - name: imageRef
+#              object: "{{ tag.from.name }}"
+#          steps:
+#            - name: add-status-tag
+#              mutate:
+#                patchJson6902:
+#                  - op: add
+#                    path: "/status/tags/-"
+#                    value:
+#                      tag: "{{ tag.name }}"
+#                      items:
+#                        - dockerImageReference: "{{ imageRef }}"
+#                          image: "{{ imageRef.split('@')[1] }}"
+#                          generation: "{{ tag.generation }}"
+
+
+#apiVersion: kyverno.io/v2beta1
+#kind: ClusterPolicy
+#metadata:
+#  name: set-imagestream-status
+#  annotations:
+#    policies.kyverno.io/title: Set ImageStream Status
+#    policies.kyverno.io/category: OpenShift Image Management
+#    policies.kyverno.io/subject: ImageStream, Status
+#    policies.kyverno.io/minversion: "1.6.0" # Requires JMESPath map and split filter
+#    policies.kyverno.io/description: >-
+#      This policy mutates OpenShift ImageStream resources upon creation or update
+#      to add a status field derived from the spec.tags and metadata.
+#      It sets the dockerImageRepository and populates status.tags with details
+#      about each image tag found in the spec.
+#      NOTE: Managing the status subresource via Kyverno can potentially conflict
+#      with built-in OpenShift controllers. Use with caution.
+#spec:
+#  validationFailureAction: Audit # Use 'Enforce' only if confident, Audit is safer for status mutation
+#  background: false # Apply synchronously on create/update
+#  rules:
+#    - name: mutate-imagestream-add-status
+#      match:
+#        resources:
+#          kinds:
+#            - ImageStream
+#          operations:
+#            - Create
+#      mutate:
+#        patchJson6902:
+#          - op: add
+#            path: "/status/tags"
+#            value: []
+#      foreach:
+#        - list: "request.object.spec.tags"
+#          variable: "tag"
+#          context:
+#            - name: imageRef
+#              object: "{{ tag.from.name }}"
+#          steps:
+#            - name: add-status-tag
+#              mutate:
+#                patchJson6902:
+#                  - op: add
+#                    path: "/status/tags/-"
+#                    value:
+#                      tag: "{{ tag.name }}"
+#                      items:
+#                        - dockerImageReference: "{{ imageRef }}"
+#                          image: "{{ imageRef.split('@')[1] }}"
+#                          generation: "{{ tag.generation }}"
+#                          created: "{{ time_now_utc() }}"
+
+
+#      # Define context to pre-calculate the tags structure
+#      context:
+#        - name: calculatedTags # Name of the context variable
+#          variable:
+#            # The complex JMESPath expression is evaluated here
+#            jmesPath: "request.object.spec.tags | map(&{ tag: @.name, items: [{ created: `{{ time_now_utc() }}`, dockerImageReference: @.from.name || '', image: `{{ split(@.from.name || '', '@') | [-1] || '' }}`, generation: @.generation }] }, @)"
+#            # Provide a default value in case the JMESPath fails or returns null
+#            default: []
+#      # Mutate using the simple context variable reference
+#      mutate:
+#        patchesJson6902: |-
+#          [
+#            {
+#              "op": "add",
+#              "path": "/status/tags",
+#              "value": {{ calculatedTags }} # Reference the context variable
+#            }
+#          ]
+
+
+#        patchStrategicMerge:
+#          status:
+#            # Uncomment `dockerImageRepository` if internal image registry is to be simulated
+#            dockerImageRepository: "image-registry.openshift-image-registry.svc:5000/{{request.namespace}}/{{request.object.metadata.name}}"
+#
+#            # Create simplified tags reflecting the current spec, not the full history.
+#            tags: "{{ request.object.spec.tags | map(&{ \
+#                     tag: @.name, \
+#                     items: [{ \
+#                       created: `{{ time_now_utc() }}`, \
+#                       dockerImageReference: @.from.name || '', /* Handle missing from.name */ \
+#                       # Apply the fix here: handle potentially null @.from.name before splitting
+#                       image: `{{ split(@.from.name || '', '@') | [-1] || '' }}`, \
+#                       generation: @.generation \
+#                     }] \
+#                   }, @) }}"
+

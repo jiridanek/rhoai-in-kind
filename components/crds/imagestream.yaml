@@ -21,3 +21,6 @@ spec:
           x-kubernetes-preserve-unknown-fields: true
       served: true
       storage: true
+      # https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#subresources
+      #subresources:
+      #  status: {}

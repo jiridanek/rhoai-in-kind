@@ -138,42 +138,4 @@ spec:
         importMode: Legacy
       referencePolicy:
         type: Source
-status:
-  # dockerImageRepository: 'image-registry.openshift-image-registry.svc:5000/redhat-ods-applications/code-server-notebook'
-  tags:
-    - tag: '2023.2'
-      items:
-        - created: '2025-01-20T11:55:55Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:b1a048f3711149e36a89e0eda1a5601130fb536ecc0aabae42ab6e4d26977354'
-          image: 'sha256:b1a048f3711149e36a89e0eda1a5601130fb536ecc0aabae42ab6e4d26977354'
-          generation: 2
-    - tag: '2024.1'
-      items:
-        - created: '2025-01-24T15:52:55Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:1fd51b0e8a14995f1f7273a4b0b40f6e7e27e225ab179959747846e54079d61e'
-          image: 'sha256:1fd51b0e8a14995f1f7273a4b0b40f6e7e27e225ab179959747846e54079d61e'
-          generation: 4
-        - created: '2025-01-20T11:55:55Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:381e498fbb347cbe969774a7546fe1f3dd3fd52e20b316e0dd927af26d5af0cf'
-          image: 'sha256:381e498fbb347cbe969774a7546fe1f3dd3fd52e20b316e0dd927af26d5af0cf'
-          generation: 2
-    - tag: '2024.2'
-      items:
-        - created: '2025-03-11T08:21:01Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:92f2a10dde5c96b29324426b4325401e8f4a0d257e439927172d5fe909289c44'
-          image: 'sha256:92f2a10dde5c96b29324426b4325401e8f4a0d257e439927172d5fe909289c44'
-          generation: 6
-        - created: '2025-01-24T15:52:55Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:33e74fe7f5e835f71cb2f35d5b83c2514db82c961c412ba2f7813dbdd44b06aa'
-          image: 'sha256:33e74fe7f5e835f71cb2f35d5b83c2514db82c961c412ba2f7813dbdd44b06aa'
-          generation: 4
-        - created: '2025-01-20T11:55:55Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:c736720505a7a14fe5b8758bd18c3ae086fba2a5c0582c2135c28d63da424187'
-          image: 'sha256:c736720505a7a14fe5b8758bd18c3ae086fba2a5c0582c2135c28d63da424187'
-          generation: 2
-    - tag: '2025.1'
-      items:
-        - created: '2025-03-26T07:22:00Z'
-          dockerImageReference: 'quay.io/modh/codeserver@sha256:38460e3b5536d903add40869714512e2c3a993c3dfe4a8010688e4e3b79bf090'
-          image: 'sha256:38460e3b5536d903add40869714512e2c3a993c3dfe4a8010688e4e3b79bf090'
-          generation: 8
+

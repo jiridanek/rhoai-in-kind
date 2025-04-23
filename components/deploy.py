@@ -105,6 +105,7 @@ def main():
     with gha_log_group("Install Kyverno policies"):
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
+        sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/imagestream-status-policy.yaml; do sleep 1; done'")
         tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Run deferred functions"):
