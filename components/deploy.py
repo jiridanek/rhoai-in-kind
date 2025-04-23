@@ -141,9 +141,10 @@ def main():
     with gha_log_group("Install fake oauth-server"):
         sh("kubectl apply -k components/oauth-server")
 
-    with gha_log_group("Create admin-user"):
-        sh("kubectl create serviceaccount -n oauth-server admin-user")
-        sh("kubectl create clusterrolebinding -n oauth-server admin-user --clusterrole cluster-admin --serviceaccount=oauth-server:admin-user")
+    with gha_log_group("Create users"):
+        for username in ["admin-user", "ldap-admin1", "ldap-user2", "ldap-admin2", "ldap-user9"]:
+            sh(f"kubectl create serviceaccount -n oauth-server {username}")
+            sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --serviceaccount=oauth-server:{username}")
 
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
