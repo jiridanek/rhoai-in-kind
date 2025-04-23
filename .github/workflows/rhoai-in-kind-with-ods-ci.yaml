@@ -89,5 +89,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: "!cancelled()"
         with:
-          name: test-output
+          name: test-output-${{ matrix.test_case == 'tests/Tests/0500__ide/0500__ide_deployment_cr_checks.robot' && 'deployment-cr-checks' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot' && 'jupyterhub-test' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot' && 'minimal-image' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot' && 'minimal-vscode' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot' && 'custom-image' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot' && 'networkpolicy' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot' && 'pip-changes' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot' && 'jupyterlab-git' || 'unknown-test' }}
           path: ods-ci/ods_ci/test-output
