@@ -90,9 +90,26 @@ jobs:
         # * by default TEST_CASE_FILE=tests/Tests
         working-directory: ods-ci/ods_ci
 
+      - name: Compute test-output name
+        if: "!cancelled()"
+        id: artifact-name
+        shell: python {0}
+        # language: python
+        run: |
+          import pathlib
+          import os
+          import re
+          
+          test_case = os.environ["TEST_CASE"]
+          artifact_name = re.sub(r'^.*/(?P<filename>[^/]+)\.robot$', r'\g<filename>', test_case)
+          pathlib.Path(os.environ["GITHUB_OUTPUT"]).write_text(f"artifact-name={artifact_name}")
+
+        env:
+          TEST_CASE: ${{ matrix.test_case }}
+
       - name: Archive test-output
         uses: actions/upload-artifact@v4
         if: "!cancelled()"
         with:
-          name: test-output-${{ matrix.test_case == 'tests/Tests/0500__ide/0500__ide_deployment_cr_checks.robot' && 'deployment-cr-checks' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot' && 'jupyterhub-test' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot' && 'minimal-image' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot' && 'minimal-vscode' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot' && 'custom-image' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot' && 'networkpolicy' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot' && 'pip-changes' || matrix.test_case == 'tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot' && 'jupyterlab-git' || 'unknown-test' }}
+          name: test-output-${{ steps.artifact-name.outputs.artifact-name }}
           path: ods-ci/ods_ci/test-output
