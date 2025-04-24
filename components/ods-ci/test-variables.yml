@@ -42,6 +42,7 @@ PIP_TRUSTED_HOST: pypi.org
 OCI_SECRET_DETAILS_FILE: /home/cloud-user/jenkins/workspace/cypress/dashboard-tests/odhcluster/config.json
 BROWSER:
   NAME: headlesschrome
+  # ;add_argument('--verbose') does nothing
   OPTIONS: add_argument("--ignore-certificate-errors");add_argument("window-size=1920,1024");add_argument('--no-sandbox');add_argument('--headless');add_argument('--disable-gpu');add_argument('--disable-dev-shm-usage')
 TEST_CLUSTERS:
   ods-qe-01:

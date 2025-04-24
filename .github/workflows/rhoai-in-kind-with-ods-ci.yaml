@@ -131,3 +131,5 @@ jobs:
 
       - run: sudo dmesg
         if: "!cancelled()"
+      - run: journalctl -xe
+        if: "!cancelled()"
