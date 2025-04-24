@@ -30,6 +30,33 @@ spec:
     path: manifests/rhoai/onprem
     targetRevision: HEAD
     kustomize:
+      patches:
+        # https://github.com/opendatahub-io/odh-dashboard/pull/4099
+        #- patch: |-
+        #    apiVersion: rbac.authorization.k8s.io/v1
+        #    kind: ClusterRole
+        #    metadata:
+        #      name: rhods-dashboard
+        #    rules:
+        #    - apiGroups:
+        #      - rbac.authorization.k8s.io
+        #      resources:
+        #      - rolebindings
+        #      verbs:
+        #      - create
+        - patch: |-
+            - op: add
+              path: /rules/-
+              value:
+                apiGroups:
+                - rbac.authorization.k8s.io
+                resources:
+                - rolebindings
+                verbs:
+                - create
+          target:
+            kind: ClusterRole
+            name: rhods-dashboard
       # https://github.com/red-hat-data-services/odh-dashboard/blob/131c0da21d6434af027634e861a157f2a501af78/Dockerfile.konflux#L24-L28
 #      patches:
 #        # add / replace / remove
