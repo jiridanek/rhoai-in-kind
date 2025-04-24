@@ -79,9 +79,10 @@ spec:
           - resources:
               kinds:
                 - route.openshift.io/v1/Route
-              namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: rhods-notebooks
+              # The user-created namespaces/data science projects may not have any deterministic label at all
+              #namespaceSelector:
+              #  matchLabels:
+              #    kubernetes.io/metadata.name: rhods-notebooks
       preconditions:
         all:
           - key: "{{ length(request.object.metadata.ownerReferences[?(@.kind == 'Notebook')]) }}"
@@ -120,10 +121,9 @@ spec:
           - resources:
               kinds:
                 - route.openshift.io/v1/Route
-              namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: rhods-notebooks
-            # Preconditions outside 'resources'
+              #namespaceSelector:
+              #  matchLabels:
+              #    kubernetes.io/metadata.name: rhods-notebooks
       preconditions:
         all:
           - key: "{{ request.object.spec.host || '' }}"
