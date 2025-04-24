@@ -51,6 +51,7 @@ spec:
                 apiGroups:
                 - rbac.authorization.k8s.io
                 resources:
+                - roles
                 - rolebindings
                 verbs:
                 - create
