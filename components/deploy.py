@@ -94,6 +94,28 @@ def main():
         sh("kubectl get namespace rhods-notebooks || kubectl create namespace rhods-notebooks")
         # dummy verb and resource, just to have something there
         sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io")
+        # I have no idea why the next line was needed; it is not mentioned in dashboard sources except in manifests
+        # that should've created this already!?!
+        sh("kubectl create clusterrole cluster-monitoring-view --verb=list --resource=imagestreams.image.openshift.io")
+        # this is to mitigate fallout from https://github.com/opendatahub-io/odh-dashboard/pull/4049
+        # not sure if this is permanent or just a temporary workaround, NOTE: rhods-notebooks serviceaccount!
+        # language=Yaml
+        dashboardPullerRole = textwrap.dedent("""
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+            name: rhods-notebooks-image-pullers
+            namespace: redhat-ods-applications
+        roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: system:image-puller
+        subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: system:serviceaccounts:rhods-notebooks
+        """)
+        create_resource(dashboardPullerRole)
 
     with gha_log_group("Configure Argo applications"):
         sh("kubectl apply -f components/03-kf-pipelines.yaml")
@@ -218,6 +240,9 @@ def sh(cmd: str, env: dict[str, str] | None = None, input: str | None = None, **
     )
     sys.stdout.flush()
     return completed_process
+
+def create_resource(resource: str):
+    sh("kubectl apply -f -", input=resource)
 
 def wait_for_webhook_service_endpoint():
     service_name = "odh-notebook-controller-webhook-service"
