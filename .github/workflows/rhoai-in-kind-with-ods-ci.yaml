@@ -40,6 +40,12 @@ jobs:
           ref: master
           path: ods-ci
 
+      # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
+      - name: Relocate docker data dir
+        run: |
+          sudo mv components/gha/etc_docker_daemon.json /etc/docker/daemon.json
+          sudo systemctl restart docker
+
       - name: Kubernetes KinD Cluster
         uses: helm/kind-action@v1
         with:
@@ -97,6 +103,8 @@ jobs:
           KUBECTL_REMOTE_COMMAND_WEBSOCKETS: "false"
           # https://developer.chrome.com/docs/chromedriver/logging
           CHROME_LOG_FILE: "/tmp/chromedriver.log"
+          #
+          DBUS_SESSION_BUS_ADDRESS: "/dev/null"
 
       - name: Compute test-output name
         if: "!cancelled()"
@@ -129,6 +137,8 @@ jobs:
           name: chromedriver-${{ steps.artifact-name.outputs.artifact-name }}
           path: /tmp/chromedriver.log
 
+      - run: df -h
+        if: "!cancelled()"
       - run: sudo dmesg
         if: "!cancelled()"
       - run: journalctl -xe
