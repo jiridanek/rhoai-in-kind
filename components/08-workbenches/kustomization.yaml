@@ -6,6 +6,9 @@ kind: Kustomization
 # https://github.com/kubernetes-sigs/kustomize/issues/3742
 namespace: redhat-ods-applications
 resources:
+  # 90s is not enough time to clone the repo at home
+  # ❯ /Users/jdanek/IdeaProjects/rhoai-in-kind/kustomize build manifests/base | oc apply --namespace redhat-ods-applications -f -
+
   # Kyverno is responsible for setting status
   # have to use rhds manifests because some images have different names there
   # https://github.com/kubernetes-sigs/kustomize/blob/master/examples/remoteBuild.md#examples
