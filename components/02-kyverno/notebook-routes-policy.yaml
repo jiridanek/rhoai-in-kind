@@ -85,7 +85,8 @@ spec:
               #    kubernetes.io/metadata.name: rhods-notebooks
       preconditions:
         all:
-          - key: "{{ length(request.object.metadata.ownerReferences[?(@.kind == 'Notebook')]) }}"
+            # - key: "{{ length(coalesce(request.object.metadata.ownerReferences[?(@.kind == 'Notebook')], [])) }}"  # coalesce() for null safety
+          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'Notebook')]) }}"  # Null-safe using || operator
             operator: GreaterThan
             value: 0
           - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
@@ -129,7 +130,7 @@ spec:
           - key: "{{ request.object.spec.host || '' }}"
             operator: Equals
             value: ""
-          - key: "{{ length(request.object.metadata.ownerReferences[?(@.kind == 'Notebook')]) }}"
+          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'Notebook')]) }}"  # Null-safe using || operator
             operator: GreaterThan
             value: 0
           - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
