@@ -96,7 +96,7 @@ jobs:
           # https://github.com/kubernetes/kubernetes/issues/131189
           KUBECTL_REMOTE_COMMAND_WEBSOCKETS: "false"
           # https://developer.chrome.com/docs/chromedriver/logging
-          #CHROME_LOG_FILE: "/tmp/chromedriver.log"
+          CHROME_LOG_FILE: "/tmp/chromedriver.log"
 
       - name: Compute test-output name
         if: "!cancelled()"
