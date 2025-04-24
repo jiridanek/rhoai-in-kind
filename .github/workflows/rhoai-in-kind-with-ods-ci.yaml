@@ -92,7 +92,7 @@ jobs:
       - name: Run ods-ci tests
         run: |
           set -Eeuxo pipefail
-          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI'
+          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI -e Resources-GPU'
         # the location is important and it's not worth it to change it
         # * poetry looks for the lock file in what is the current directory or its parents
         # * by default TEST_CASE_FILE=tests/Tests
