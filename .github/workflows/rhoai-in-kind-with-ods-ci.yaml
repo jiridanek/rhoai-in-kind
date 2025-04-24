@@ -95,6 +95,8 @@ jobs:
           # https://github.com/jiridanek/rhoai-in-kind/issues/5
           # https://github.com/kubernetes/kubernetes/issues/131189
           KUBECTL_REMOTE_COMMAND_WEBSOCKETS: "false"
+          # https://developer.chrome.com/docs/chromedriver/logging
+          #CHROME_LOG_FILE: "/tmp/chromedriver.log"
 
       - name: Compute test-output name
         if: "!cancelled()"
@@ -119,3 +121,13 @@ jobs:
         with:
           name: test-output-${{ steps.artifact-name.outputs.artifact-name }}
           path: ods-ci/ods_ci/test-output
+
+      - name: Archive chromedriver.log
+        uses: actions/upload-artifact@v4
+        if: "!cancelled()"
+        with:
+          name: chromedriver-${{ steps.artifact-name.outputs.artifact-name }}
+          path: /tmp/chromedriver.log
+
+      - run: sudo dmesg
+        if: "!cancelled()"
