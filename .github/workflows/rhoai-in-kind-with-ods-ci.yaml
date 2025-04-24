@@ -91,6 +91,10 @@ jobs:
         # * poetry looks for the lock file in what is the current directory or its parents
         # * by default TEST_CASE_FILE=tests/Tests
         working-directory: ods-ci/ods_ci
+        env:
+          # https://github.com/jiridanek/rhoai-in-kind/issues/5
+          # https://github.com/kubernetes/kubernetes/issues/131189
+          KUBECTL_REMOTE_COMMAND_WEBSOCKETS: "false"
 
       - name: Compute test-output name
         if: "!cancelled()"
