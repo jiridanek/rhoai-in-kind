@@ -182,7 +182,13 @@ def main():
         sh("kubectl apply -k components/oauth-server")
 
     with gha_log_group("Create users"):
-        for username in ["htpasswd-cluster-admin-user", "admin-user", "ldap-admin1", "ldap-user1", "ldap-user2", "ldap-admin2", "ldap-user9"]:
+        for username in [
+            # ods-ci users
+            "htpasswd-cluster-admin-user", "admin-user", "ldap-admin1", "ldap-user1", "ldap-user2", "ldap-admin2", "ldap-user9",
+            # cypress e2e users
+            # foo-user, contributor-username
+            "adminuser",
+        ]:
             sh(f"kubectl create serviceaccount -n oauth-server {username}")
             sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --serviceaccount=oauth-server:{username}")
 
