@@ -151,6 +151,11 @@ spec:
 #            {"op": "remove", "path": "/spec/initContainers/*/resources/requests/memory"}
 #          ]
 
+# https://kyverno.io/docs/writing-policies/mutate/
+# Also, mutations using patchesJson6902 to Pods directly are not converted to higher-level controllers such as Deployments and StatefulSets through the use of the auto-gen feature.
+# Therefore, when writing such mutation rules for Pods,
+# it may be necessary to create multiple rules to cover all relevant Pod controllers.
+
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -180,6 +185,10 @@ spec:
               #namespaceSelector:
               #  matchLabels:
               #    opendatahub.io/dashboard: "true"
+              # override any updates from controller/statefulset
+              operations:
+                - CREATE
+                - UPDATE
       #mutate:
       #  patchStrategicMerge:
       #    spec:
@@ -200,12 +209,18 @@ spec:
           # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
           - list: "request.object.spec.containers || []"
             patchesJson6902: |-
+              - op: add
+                path: "/spec/containers/{{elementIndex}}/resources/requests/memory"
+                value: "0"
               - op: remove
                 path: "/spec/containers/{{elementIndex}}/resources/requests/cpu"
               - op: remove
                 path: "/spec/containers/{{elementIndex}}/resources/limits/cpu"
           - list: "request.object.spec.initContainers || []"
             patchesJson6902: |-
+              - op: add
+                path: "/spec/initContainers/{{elementIndex}}/resources/requests/memory"
+                value: "0"
               - op: remove
                 path: "/spec/initContainers/{{elementIndex}}/resources/requests/cpu"
               - op: remove
