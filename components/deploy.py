@@ -204,19 +204,10 @@ def main():
         # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/
         sh("kubectl get storageclass")
         # kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-        # dashboard tests expect a storage class standard-csi
-        sh("kubectl apply -f -", input=textwrap.dedent("""
-          ---
-          apiVersion: storage.k8s.io/v1
-          kind: StorageClass
-          metadata:
-            annotations:
-              storageclass.kubernetes.io/is-default-class: "true"
-            name: standard-csi
-          provisioner: rancher.io/local-path
-          reclaimPolicy: Delete
-          volumeBindingMode: WaitForFirstConsumer
-          """))
+        # dashboard tests expect a storage class that's identified by
+        # > oc get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
+        # and the above delivers, so nothing more to do here
+        # most importantly, don't create another `storageclass.kubernetes.io/is-default-class: "true"` thing or the above command returns both, space separated
 
     with gha_log_group("Run deferred functions"):
         with tf:
