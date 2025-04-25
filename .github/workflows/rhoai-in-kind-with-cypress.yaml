@@ -7,6 +7,24 @@ jobs:
   rhoai-in-kind:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        test_case:
+          - "**/workbenches/testWorkbenchControlSuite.cy.ts"
+
+          # this checks user perms but all my users are in effect admins
+          - "**/workbenches/testWorkbenchCreation.cy.ts"
+
+          - "**/workbenches/testWorkbenchImages.cy.ts"
+
+          # I'm removing resource requests, so even XXL workbench starts up
+          #- "**/workbenches/testWorkbenchNegativeTests.cy.ts"
+
+          - "**/workbenches/testWorkbenchStatus.cy.ts"
+          - "**/workbenches/testWorkbenchVariables.cy.ts"
+          - "**/workbenches/workbenches.cy.ts"
+
     steps:
 
       - uses: actions/checkout@v4
@@ -70,26 +88,42 @@ jobs:
         run: |
           set -Eeuxo pipefail
           # cypress run -b chrome --project src/__tests__/cypress --env skipTags=@Bug,grepTags=@Smoke --config video=true
-          CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '**/workbenches/workbenches.cy.ts'
+          CY_TEST_CONFIG=${{ github.workspace }}/test-variables.yml npm run cypress:run -- --spec '${{ matrix.test_case }}'
         working-directory: odh-dashboard/frontend
         env:
           # dumb, xterm, xterm-256color
           TERM: xterm-256color
 
+      - name: Compute test-output name
+        if: "!cancelled()"
+        id: artifact-name
+        shell: python {0}
+        # language: python
+        run: |
+          import pathlib
+          import os
+          import re
+          
+          test_case = os.environ["TEST_CASE"]
+          artifact_name = re.sub(r'^.*/(?P<filename>[^/]+)\.robot$', r'\g<filename>', test_case)
+          pathlib.Path(os.environ["GITHUB_OUTPUT"]).write_text(f"artifact-name={artifact_name}")
+        env:
+          TEST_CASE: ${{ matrix.test_case }}
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: cypress-report
+          name: cypress-report-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/index.html
 
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: cypress-screenshots
+          name: cypress-screenshots-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/screenshots
 
       - uses: actions/upload-artifact@v4
         if: "!cancelled()"
         with:
-          name: cypress-videos
+          name: cypress-videos-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/videos
