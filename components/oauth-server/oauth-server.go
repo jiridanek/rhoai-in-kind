@@ -138,6 +138,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 <p>Log in with</p>
 <ul>
 <li><a href="" role="link" name="adm-auth">adm-auth</a></li>
+<li><a href="" role="link" name="contributor-auth">contributor-auth</a></li>
 <li><a href="" role="link" name="ldap-provider-qe">ldap-provider-qe</a></li>
 </ul>
 <div class="pf-c-login">
