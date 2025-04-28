@@ -64,6 +64,24 @@ spec:
         namespaces:
           from: All
 ---
+# opening codeserver from spawner ui will end up giving me (Access notebook server button)
+# http://jupyter-nb-admin-2duser-rhods-notebooks.127.0.0.1.sslip.io/codeserver/
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: redirect-http-to-https
+  namespace: istio-system
+spec:
+  parentRefs:
+    - namespace: istio-system
+      name: gateway
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+---
 #apiVersion: gateway.networking.k8s.io/v1alpha3
 #kind: BackendTLSPolicy
 #metadata:
