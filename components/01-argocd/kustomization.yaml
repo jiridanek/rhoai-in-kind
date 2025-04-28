@@ -6,9 +6,10 @@ kind: Kustomization
 namespace: argocd
 resources:
   - namespace.yaml
-  - https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.9/manifests/install.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.11/manifests/install.yaml
 
 patches:
+  - path: gittimeoutconfig.yaml
   - patch: |-
       - op: add
         path: /spec/template/spec/containers/0/args/-

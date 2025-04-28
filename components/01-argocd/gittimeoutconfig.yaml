@@ -1,0 +1,14 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          env:
+            # https://github.com/argoproj/argo-cd/issues/13356#issuecomment-1965532470
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "5m"
