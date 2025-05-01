@@ -41,14 +41,18 @@ const tests: Record<string, TestObject | string> = {
       function processData(inputParam, threshold) {
         const intermediateResult = inputParam * 2;
         const configValue = threshold + 5;
+        // Remove
         function processFurther(data) {
           return data / configValue;
-        }
-        console.log("Starting final processing.");
-        const finalResult = processFurther(intermediateResult);
-        console.log(\`Final result based on threshold \${configValue}:\`, finalResult);
-        console.log("Input param was:", inputParam);
-        return finalResult > 1;
+        } // Keep
+
+        // The marker
+
+        console.log("Starting final processing."); // Keep
+        const finalResult = processFurther(intermediateResult); // Keep
+        console.log(\`Final result based on threshold \${configValue}:\`, finalResult); // Keep
+        console.log("Input param was:", inputParam); // Keep
+        return finalResult > 1; // Keep
       }
     `,
     },
