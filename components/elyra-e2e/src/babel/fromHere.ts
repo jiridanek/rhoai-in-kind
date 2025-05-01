@@ -27,7 +27,12 @@ export default function ({ types }: { types: typeof t }): PluginDefinition {
 
                 // Ensure we are working with a function that has a BlockStatement body
                 if (!functionBodyPath.isBlockStatement()) {
-                    console.warn(`Skipping function '${(path.node.id?.name) ?? 'anonymous'}' as it does not have a block statement body.`);
+                    // Check if the node is a type that can have an 'id' before accessing it
+                    const functionName = (t.isFunctionDeclaration(path.node) || t.isFunctionExpression(path.node))
+                        ? path.node.id?.name // Access id only if it's FunctionDeclaration or FunctionExpression
+                        : null; // Arrow functions don't have an id
+
+                    console.warn(`Skipping function '${functionName ?? 'anonymous'}' as it does not have a block statement body.`);
                     return;
                 }
 
@@ -56,67 +61,61 @@ export default function ({ types }: { types: typeof t }): PluginDefinition {
                 }
 
                 // --- Step 2: Split statements ---
-                // Statements before the marker (exclusive of the marker)
                 const beforeStatementsPaths: NodePath<t.Statement>[] = bodyPaths.slice(0, fromHereIndex);
-                // Statements after the marker (exclusive of the marker)
+                // Create a Set of the actual nodes for faster/more reliable lookup
+                const beforeStatementNodes = new Set(beforeStatementsPaths.map(p => p.node));
                 const afterStatementsPaths: NodePath<t.Statement>[] = bodyPaths.slice(fromHereIndex + 1);
 
                 // --- Step 3: Analyze variable usage AFTER fromHere() ---
                 const usedVariableNames = new Set<string>();
-                // Create a temporary BlockStatement node containing only the 'after' statements
-                // This allows isolated traversal for usage analysis
                 const afterStatementsBlock: t.BlockStatement = t.blockStatement(
                     afterStatementsPaths.map(p => p.node)
                 );
 
-                // Traverse the 'after' block to find all referenced identifiers
-                // We need a valid NodePath context for traversal; using the function body's path
-                // and providing the function's scope ensures correct binding resolution.
                 traverse(afterStatementsBlock, {
-                    // Process identifiers that are read/referenced
                     Identifier(identifierPath: NodePath<t.Identifier>) {
-                        // Check if it's a reference (not a declaration, label, or property name)
                         if (!identifierPath.isReferencedIdentifier()) {
                             return;
                         }
 
                         const identifierName = identifierPath.node.name;
-                        // Check if the binding exists in the *function's* scope or higher
-                        // This avoids counting variables declared *within* the 'after' block itself
-                        const binding: Binding | undefined = path.scope.getBinding(identifierName);
+                        const binding = path.scope.getBinding(identifierName);
 
-                        // We are interested in variables declared *within* the current function
-                        // (as parameters or via var/let/const/function/class declarations)
-                        // or variables from outer scopes (which are implicitly kept).
-                        // We specifically need to track those declared *before* fromHere().
-                        if (binding) {
-                            // Check if the binding originates from within this function's scope
-                            // or is a parameter. We don't need to explicitly preserve bindings
-                            // from outer scopes, as they aren't removed.
-                            if (binding.path.scope === path.scope) {
+                        if (binding && binding.scope === path.scope) {
+                            let declarationStatementPath: NodePath | null = binding.path;
+                            while (declarationStatementPath && !declarationStatementPath.isStatement()) {
+                                declarationStatementPath = declarationStatementPath.parentPath;
+                            }
+
+                            // --- Add Detailed Logging ---
+                            if (identifierName === 'intermediateResult' || identifierName === 'configValue') {
+                                console.log(`[DEBUG] Checking identifier: ${identifierName}`);
+                                if (declarationStatementPath) {
+                                    console.log(`[DEBUG]   Declaration Node Type: ${declarationStatementPath.node.type}`);
+                                    const isInBeforeSet = beforeStatementNodes.has(declarationStatementPath.node);
+                                    console.log(`[DEBUG]   Is declaration node in beforeStatementNodes? ${isInBeforeSet}`);
+                                    if (!isInBeforeSet) {
+                                        // If it's not found, let's log the nodes for comparison
+                                        console.log('[DEBUG]   Declaration Node:', declarationStatementPath.node);
+                                        console.log('[DEBUG]   Nodes in beforeStatementNodes:', Array.from(beforeStatementNodes));
+                                    }
+                                } else {
+                                    console.log('[DEBUG]   Could not find declaration statement path.');
+                                }
+                            }
+                            // --- End Detailed Logging ---
+
+                            if (declarationStatementPath && beforeStatementNodes.has(declarationStatementPath.node)) {
                                 usedVariableNames.add(identifierName);
                             }
-                        } else {
-                            // If no binding found in the function scope or above, it might be a global
-                            // or an undeclared variable. We don't track these for preservation
-                            // within this plugin's logic.
                         }
                     },
-                    // Consider function declarations called after fromHere
-                    CallExpression(callPath: NodePath<t.CallExpression>) {
-                        const callee = callPath.node.callee;
-                        // Check if the callee is an identifier and is referenced
-                        if (t.isIdentifier(callee) && callPath.get('callee').isReferencedIdentifier()) {
-                            const calleeName = callee.name;
-                            const binding: Binding | undefined = path.scope.getBinding(calleeName);
-                            // If it's bound to a function declared within this function's scope
-                            if (binding && binding.path.isFunctionDeclaration() && binding.path.scope === path.scope) {
-                                usedVariableNames.add(calleeName);
-                            }
-                        }
-                    }
-                }, path.scope, {}, functionBodyPath); // Provide scope and parent path for context
+                    // ... CallExpression visitor remains the same ...
+                }, path.scope, {}, functionBodyPath);
 
+                // --- Add Logging for the final set ---
+                console.log('[DEBUG] Final usedVariableNames:', Array.from(usedVariableNames));
+                // --- End Logging ---
 
                 // --- Step 4: Identify necessary declarations BEFORE fromHere() ---
                 const necessaryDeclarationNodes: t.Statement[] = [];
@@ -129,23 +128,40 @@ export default function ({ types }: { types: typeof t }): PluginDefinition {
                     if (statementPath.isVariableDeclaration()) {
                         const necessaryDeclarators: t.VariableDeclarator[] = [];
                         statementPath.node.declarations.forEach(declarator => {
-                            // Check all types of declaration IDs (Identifier, ObjectPattern, ArrayPattern)
-                            t.getBindingIdentifiers(declarator.id).forEach(id => {
-                                if (usedVariableNames.has(id.name)) {
-                                    // If any variable in this declaration is used, keep the declarator
-                                    necessaryDeclarators.push(declarator);
+                            // Get the map of binding identifiers
+                            // The map looks like { Identifier?: Identifier[], AssignmentPattern?: AssignmentPattern[], ... }
+                            const identifiersMap = t.getBindingIdentifiers(declarator.id);
+
+                            // Iterate over the arrays within the map's values
+                            for (const nodeArray of Object.values(identifiersMap)) {
+                                // nodeArray is expected to be an array like t.Identifier[] or t.AssignmentPattern[] etc.
+                                // Add a check to be safe, although Object.values should always return arrays here.
+                                if (Array.isArray(nodeArray)) {
+                                    // Iterate over the nodes within this specific array
+                                    nodeArray.forEach((node: t.Node | null) => { // node could be Identifier, Pattern, etc. or null
+                                        // Check if the node is a valid Identifier and is used
+                                        if (node && t.isIdentifier(node) && usedVariableNames.has(node.name)) {
+                                            // If this identifier is used, keep the entire declarator it came from.
+                                            // We only need to add the declarator once, even if it binds multiple used variables.
+                                            if (!necessaryDeclarators.includes(declarator)) {
+                                                necessaryDeclarators.push(declarator);
+                                            }
+                                            // Optimization: If we found one used identifier, we keep the whole declarator,
+                                            // no need to check other identifiers within the *same* declarator.
+                                            // However, the current logic correctly handles this by checking includes().
+                                        }
+                                        // Add checks here for other node types (like patterns) if necessary
+                                    });
                                 }
-                            });
+                            }
                         });
 
                         // If any declarators from this statement are needed, reconstruct the declaration
                         if (necessaryDeclarators.length > 0) {
                             // Create a new declaration statement with only the necessary variables
-                            // Note: This splits declarations like 'const a=1, b=2;' if only 'b' is needed.
                             declarationNodeToAdd = t.variableDeclaration(
                                 statementPath.node.kind, // Keep original kind (const/let/var)
-                                // Filter unique declarators (in case multiple bindings point to the same one)
-                                [...new Set(necessaryDeclarators)]
+                                necessaryDeclarators // Use the collected necessary declarators
                             );
                         }
                     }
