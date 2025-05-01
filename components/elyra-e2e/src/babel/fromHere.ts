@@ -121,70 +121,85 @@ export default function ({ types }: { types: typeof t }): PluginDefinition {
                 const necessaryDeclarationNodes: t.Statement[] = [];
                 const addedDeclarations = new Set<t.Node>(); // Prevent adding the same statement node multiple times
 
+                console.log('[DEBUG Step 4] Starting. usedVariableNames:', Array.from(usedVariableNames)); // Log at start
+
                 beforeStatementsPaths.forEach(statementPath => {
                     let declarationNodeToAdd: t.Statement | null = null;
 
                     // Check for Variable Declarations (const, let, var)
                     if (statementPath.isVariableDeclaration()) {
+                        console.log(`[DEBUG Step 4] Processing VariableDeclaration: ${statementPath.node.declarations.map(d => (d.id as any)?.name ?? '?').join(', ')}`);
                         const necessaryDeclarators: t.VariableDeclarator[] = [];
                         statementPath.node.declarations.forEach(declarator => {
-                            // Get the map of binding identifiers
-                            // The map looks like { Identifier?: Identifier[], AssignmentPattern?: AssignmentPattern[], ... }
+                            console.log(`[DEBUG Step 4]   Declarator ID type: ${declarator.id.type}, Name (if Identifier): ${(declarator.id as any)?.name}`);
                             const identifiersMap = t.getBindingIdentifiers(declarator.id);
+                            let declaratorNeeded = false;
 
-                            // Iterate over the arrays within the map's values
-                            for (const nodeArray of Object.values(identifiersMap)) {
-                                // nodeArray is expected to be an array like t.Identifier[] or t.AssignmentPattern[] etc.
-                                // Add a check to be safe, although Object.values should always return arrays here.
-                                if (Array.isArray(nodeArray)) {
-                                    // Iterate over the nodes within this specific array
-                                    nodeArray.forEach((node: t.Node | null) => { // node could be Identifier, Pattern, etc. or null
-                                        // Check if the node is a valid Identifier and is used
-                                        if (node && t.isIdentifier(node) && usedVariableNames.has(node.name)) {
-                                            // If this identifier is used, keep the entire declarator it came from.
-                                            // We only need to add the declarator once, even if it binds multiple used variables.
-                                            if (!necessaryDeclarators.includes(declarator)) {
-                                                necessaryDeclarators.push(declarator);
-                                            }
-                                            // Optimization: If we found one used identifier, we keep the whole declarator,
-                                            // no need to check other identifiers within the *same* declarator.
-                                            // However, the current logic correctly handles this by checking includes().
-                                        }
-                                        // Add checks here for other node types (like patterns) if necessary
-                                    });
+                            // *** CORRECTED LOOP ***
+                            // Iterate directly over all binding nodes returned by getBindingIdentifiers
+                            // This handles simple identifiers, object patterns, array patterns etc.
+                            Object.values(identifiersMap).flat().forEach((node: t.Node | null) => {
+                                // Check if the node is an Identifier and if it's in our used set
+                                if (node && t.isIdentifier(node)) {
+                                    const nodeName = node.name;
+                                    const isInSet = usedVariableNames.has(nodeName);
+                                    console.log(`[DEBUG Step 4]     Checking identifier node.name='${nodeName}'. Is in usedVariableNames? ${isInSet}`);
+                                    if (isInSet) {
+                                        console.log(`[DEBUG Step 4]     Found used identifier '${nodeName}' in declarator.`);
+                                        declaratorNeeded = true;
+                                        // Optimization: If one binding in the declarator is needed, we keep the whole thing.
+                                        // No need to check other bindings within the *same* declarator.
+                                        // We can break the inner forEach early, but it's tricky.
+                                        // Setting the flag and checking later is simpler.
+                                    }
+                                } else if (node) {
+                                    console.log(`[DEBUG Step 4]     Node is not an Identifier (type: ${node.type})`);
+                                } else {
+                                    console.log(`[DEBUG Step 4]     Node is null`);
                                 }
+                            });
+                            // *** END CORRECTED LOOP ***
+
+
+                            if (declaratorNeeded && !necessaryDeclarators.includes(declarator)) {
+                                console.log(`[DEBUG Step 4]   Adding declarator for '${(declarator.id as any)?.name ?? '?'}' to necessaryDeclarators.`);
+                                necessaryDeclarators.push(declarator);
                             }
                         });
 
-                        // If any declarators from this statement are needed, reconstruct the declaration
                         if (necessaryDeclarators.length > 0) {
-                            // Create a new declaration statement with only the necessary variables
+                            console.log(`[DEBUG Step 4]   Reconstructing VariableDeclaration with ${necessaryDeclarators.length} declarator(s).`);
                             declarationNodeToAdd = t.variableDeclaration(
-                                statementPath.node.kind, // Keep original kind (const/let/var)
-                                necessaryDeclarators // Use the collected necessary declarators
+                                statementPath.node.kind,
+                                necessaryDeclarators
                             );
+                        } else {
+                            console.log(`[DEBUG Step 4]   No necessary declarators found for this VariableDeclaration.`);
                         }
                     }
                     // Check for Function Declarations
                     else if (statementPath.isFunctionDeclaration()) {
-                        // Function declarations are hoisted, but we check usage explicitly
                         if (statementPath.node.id && usedVariableNames.has(statementPath.node.id.name)) {
+                            console.log(`[DEBUG Step 4] Identified necessary FunctionDeclaration: ${statementPath.node.id.name}`); // Log function
                             declarationNodeToAdd = statementPath.node;
                         }
                     }
-                    // Check for Class Declarations
-                    else if (statementPath.isClassDeclaration()) {
-                        if (statementPath.node.id && usedVariableNames.has(statementPath.node.id.name)) {
-                            declarationNodeToAdd = statementPath.node;
-                        }
-                    }
+                    // Check for Class Declarations (add similar logging if needed)
+                    // ...
 
                     // Add the necessary declaration node if found and not already added
-                    if (declarationNodeToAdd && !addedDeclarations.has(declarationNodeToAdd)) {
-                        necessaryDeclarationNodes.push(declarationNodeToAdd);
-                        addedDeclarations.add(declarationNodeToAdd);
+                    if (declarationNodeToAdd) {
+                        if (!addedDeclarations.has(declarationNodeToAdd)) {
+                            console.log(`[DEBUG Step 4] Adding node of type ${declarationNodeToAdd.type} to necessaryDeclarationNodes.`); // Log adding final node
+                            necessaryDeclarationNodes.push(declarationNodeToAdd);
+                            addedDeclarations.add(declarationNodeToAdd);
+                        } else {
+                            console.log(`[DEBUG Step 4] Node of type ${declarationNodeToAdd.type} was already added.`); // Log if duplicate
+                        }
                     }
                 });
+
+                console.log(`[DEBUG Step 4] Finished. necessaryDeclarationNodes count: ${necessaryDeclarationNodes.length}`); // Log final count
 
                 // --- Step 5: Construct the new function body ---
                 // Combine the preserved declarations with all statements that came after the marker
