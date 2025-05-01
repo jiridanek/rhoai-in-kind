@@ -19,6 +19,18 @@ const transformCode = (inputCode: string): string | null => {
 };
 
 describe('babel-plugin-from-here', () => {
+    it('should transform fromHere() to itself', () => {
+        const input = `function f() { fromHere(); }`
+        const result = transformCode(input);
+        expect(result).toMatchSnapshot();
+    });
+
+    it('should transform locally defined fromHere() to itself', () => {
+        const input = `function fromHere() { } function f() { fromHere(); }`
+        const result = transformCode(input);
+        expect(result).toMatchSnapshot();
+    });
+
     it('should remove code before fromHere() and keep used variables', () => {
         const input = `
       function processData(inputParam, threshold) {

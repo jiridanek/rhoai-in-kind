@@ -46,7 +46,9 @@ const tests: Record<string, TestObject | string> = {
           return data / configValue;
         } // Keep
 
-        // The marker
+        // Remove
+
+        fromHere(); // The marker
 
         console.log("Starting final processing."); // Keep
         const finalResult = processFurther(intermediateResult); // Keep
@@ -90,7 +92,7 @@ pluginTester({
     plugin: fromHerePlugin,
     pluginName: 'transform-from-here',
     babelOptions: commonBabelOptions,
-    tests: tests, // Pass the defined tests object
+    tests: tests,
 });
 
 // https://www.npmjs.com/package/babel-plugin-tester#built-in-debugging-support
