@@ -1,8 +1,20 @@
-// babel-plugin-variable-labels.js
 import * as t from '@babel/types';
+import type { NodePath, Visitor } from '@babel/traverse';
+
+// Define types for the data structures
+interface LabelInfo {
+    stateName: string;
+    startNodePath: NodePath<t.Statement> | null;
+}
+
+interface GotoInfo {
+    path: NodePath<t.CallExpression | t.ExpressionStatement>; // Path can be CallExpression or its parent ExpressionStatement
+    targetLabelVar: string;
+}
 
 // Helper to check if a node is the label declaration pattern
-function isLabelDeclaration(node) {
+// Add type annotation for the 'node' parameter
+function isLabelDeclaration(node: t.Node): node is t.VariableDeclaration {
     return (
         t.isVariableDeclaration(node) &&
         node.declarations.length === 1 &&
@@ -14,7 +26,8 @@ function isLabelDeclaration(node) {
 }
 
 // Helper to check if a node is the goto call pattern
-function isGotoCall(node) {
+// Add type annotation for the 'node' parameter
+function isGotoCall(node: t.Node): node is t.CallExpression {
     return (
         t.isCallExpression(node) &&
         t.isIdentifier(node.callee, { name: 'goto' }) &&
@@ -23,14 +36,17 @@ function isGotoCall(node) {
     );
 }
 
-export default function ({ types: t }) {
+// Define the Babel plugin function signature
+export default function ({ types }: { types: typeof t }): { name: string; visitor: Visitor } {
     return {
         name: 'transform-variable-labels',
         visitor: {
-            Function(path) {
-                const labels = new Map(); // Map label variable name -> { stateName: string, startNodePath: NodePath | null }
-                const gotos = []; // Store { path: NodePath, targetLabelVar: string }
-                const labelDeclarationPaths = []; // Store paths to remove label declarations
+            // Specify the type for the Function node path
+            Function(path: NodePath<t.Function>) {
+                // Add types for maps and arrays
+                const labels = new Map<string, LabelInfo>();
+                const gotos: GotoInfo[] = [];
+                const labelDeclarationPaths: NodePath<t.VariableDeclaration>[] = []; // Type the array of paths
 
                 let hasGoto = false;
                 let hasLabel = false;
@@ -42,14 +58,16 @@ export default function ({ types: t }) {
                     return;
                 }
 
-                const bodyPaths = functionBodyPath.get('body');
+                // Type the array of statement paths
+                const bodyPaths: NodePath<t.Statement>[] = functionBodyPath.get('body');
 
                 for (let i = 0; i < bodyPaths.length; i++) {
                     const nodePath = bodyPaths[i];
                     const node = nodePath.node;
 
                     if (isLabelDeclaration(node)) {
-                        const labelVarName = node.declarations[0].id.name;
+                        // node is now narrowed to t.VariableDeclaration
+                        const labelVarName = (node.declarations[0].id as t.Identifier).name; // Assert type if needed, though check implies it
                         if (labels.has(labelVarName)) {
                             throw nodePath.buildCodeFrameError(
                                 `Duplicate label variable '${labelVarName}'`
@@ -58,20 +76,23 @@ export default function ({ types: t }) {
                         const stateName = path.scope.generateUidIdentifier(labelVarName)
                             .name;
                         // The code block for this label starts *after* the declaration
-                        const startNodePath = bodyPaths[i + 1] || null; // Get the next statement's path
+                        const startNodePath = bodyPaths[i + 1] || null; // Type is NodePath<t.Statement> | null
                         labels.set(labelVarName, { stateName, startNodePath });
-                        labelDeclarationPaths.push(nodePath); // Mark for removal
+                        labelDeclarationPaths.push(nodePath as NodePath<t.VariableDeclaration>); // Cast if sure, or refine isLabelDeclaration return
                         hasLabel = true;
                     } else if (t.isExpressionStatement(node) && isGotoCall(node.expression)) {
-                        const targetLabelVar = node.expression.arguments[0].name;
-                        gotos.push({ path: nodePath, targetLabelVar });
+                        // node.expression is now narrowed to t.CallExpression
+                        const targetLabelVar = (node.expression.arguments[0] as t.Identifier).name; // Assert type
+                        gotos.push({ path: nodePath as NodePath<t.ExpressionStatement>, targetLabelVar }); // Cast path
                         hasGoto = true;
                     } else {
                         // Also traverse into nested blocks if necessary, simplified here
                         nodePath.traverse({
-                            CallExpression(callPath) {
+                            // Type the call expression path
+                            CallExpression(callPath: NodePath<t.CallExpression>) {
                                 if (isGotoCall(callPath.node)) {
-                                    const targetLabelVar = callPath.node.arguments[0].name;
+                                    // callPath.node is narrowed to t.CallExpression
+                                    const targetLabelVar = (callPath.node.arguments[0] as t.Identifier).name; // Assert type
                                     gotos.push({ path: callPath, targetLabelVar });
                                     hasGoto = true;
                                 }
@@ -91,7 +112,7 @@ export default function ({ types: t }) {
                 }
 
                 // --- Step 2: Prepare for State Machine ---
-                const stateVar = path.scope.generateUidIdentifier('gotoState');
+                const stateVar = path.scope.generateUidIdentifier('gotoState'); // Type is t.Identifier
                 const startState = 'start';
                 const endState = 'end';
 
@@ -106,37 +127,38 @@ export default function ({ types: t }) {
 
                 // --- Step 3: Transform Gotos and Returns (in place before restructuring) ---
                 path.traverse({
-                    // Replace goto(labelVar)
-                    CallExpression(callPath) {
+                    // Type the call expression path
+                    CallExpression(callPath: NodePath<t.CallExpression>) {
                         if (isGotoCall(callPath.node)) {
-                            const targetLabelVar = callPath.node.arguments[0].name;
+                            // callPath.node is narrowed
+                            const targetLabelVar = (callPath.node.arguments[0] as t.Identifier).name;
                             const targetState = labels.get(targetLabelVar)?.stateName;
                             if (!targetState) {
-                                // Should have been caught earlier, but double-check
                                 throw callPath.buildCodeFrameError(`Internal error: Cannot find state for label ${targetLabelVar}`);
                             }
-                            // _gotoState = 'targetState'; continue;
-                            // If goto is inside an ExpressionStatement, replace the whole statement
-                            if (callPath.parentPath.isExpressionStatement()) {
-                                callPath.parentPath.replaceWithMultiple([
+
+                            const parentPath = callPath.parentPath; // Get parent path for check
+                            if (parentPath.isExpressionStatement()) {
+                                parentPath.replaceWithMultiple([
                                     t.expressionStatement(t.assignmentExpression('=', stateVar, t.stringLiteral(targetState))),
                                     t.continueStatement()
                                 ]);
                             } else {
-                                // If it's part of a larger expression (less likely for goto), this needs more complex handling.
-                                // Replacing just the call expression might be syntactically invalid.
-                                // For simplicity, assume goto is a standalone statement.
-                                callPath.replaceWithMultiple([ // This might error if not in a statement context
+                                // Handle the case where goto might not be in a simple ExpressionStatement
+                                // This simplified version might still cause issues if goto is nested deeply
+                                console.warn("Replacing goto() call that is not a direct ExpressionStatement. This might lead to unexpected behavior or errors.");
+                                callPath.replaceWithMultiple([
                                     t.expressionStatement(t.assignmentExpression('=', stateVar, t.stringLiteral(targetState))),
                                     t.continueStatement()
                                 ]);
                             }
+                            // It's generally safer to skip further traversal on the replaced path
+                            // callPath.skip(); // Consider adding this if replacements cause issues
                         }
                     },
-                    // Replace return statements
-                    ReturnStatement(returnPath) {
+                    // Type the return statement path
+                    ReturnStatement(returnPath: NodePath<t.ReturnStatement>) {
                         // Simplified: Doesn't handle storing return value properly yet.
-                        // Needs a variable outside the loop to store the return value.
                         returnPath.replaceWithMultiple([
                             t.expressionStatement(t.assignmentExpression('=', stateVar, t.stringLiteral(endState))),
                             t.continueStatement(),
@@ -149,25 +171,25 @@ export default function ({ types: t }) {
                 labelDeclarationPaths.forEach(p => p.remove());
 
                 // --- Step 5: Build the State Machine Structure ---
-                const switchCases = [];
-                const originalNodes = functionBodyPath.node.body; // Get potentially modified nodes
+                const switchCases: t.SwitchCase[] = [];
 
                 // Group nodes by state
-                const nodesByState = new Map(); // Map stateName -> nodes[]
+                const nodesByState = new Map<string, t.Statement[]>();
                 nodesByState.set(startState, []);
 
-                let currentStateNodes = nodesByState.get(startState);
-                let currentLabelVarForState = null;
+                let currentStateNodes: t.Statement[] | undefined = nodesByState.get(startState);
 
                 // Find the state associated with each node
-                const stateForNode = new Map(); // Map node -> stateName
+                const stateForNode = new Map<t.Node, string>(); // Map Node -> stateName
                 labels.forEach(({ stateName, startNodePath }) => {
                     if (startNodePath) {
+                        // Use startNodePath.node which is guaranteed to be a t.Statement here
                         stateForNode.set(startNodePath.node, stateName);
                     }
                 });
 
                 // Iterate through the *current* nodes in the body after transformations/removals
+                // Use functionBodyPath which is guaranteed to be a BlockStatement path
                 functionBodyPath.get('body').forEach(nodePath => {
                     const node = nodePath.node;
                     const designatedState = stateForNode.get(node);
@@ -177,13 +199,22 @@ export default function ({ types: t }) {
                         currentStateNodes = [];
                         nodesByState.set(designatedState, currentStateNodes);
                     }
-                    if (currentStateNodes) { // Ensure we have a place to put the node
+
+                    // Check if currentStateNodes is defined before pushing
+                    if (currentStateNodes) {
                         currentStateNodes.push(node);
                     } else {
-                        // This might happen if the first statement was a label declaration
-                        // and got removed. Add to start state as fallback.
-                        nodesByState.get(startState).push(node);
-                        currentStateNodes = nodesByState.get(startState);
+                        // Fallback: Add to start state if no current state is defined
+                        // This condition might indicate an issue if it happens unexpectedly
+                        console.warn("Node added to 'start' state as fallback:", node);
+                        const startNodes = nodesByState.get(startState);
+                        if (startNodes) {
+                            startNodes.push(node);
+                            currentStateNodes = startNodes; // Reassign currentStateNodes
+                        } else {
+                            // This should ideally not happen if startState is initialized
+                            console.error("Critical error: 'start' state node list not found.");
+                        }
                     }
                 });
 
@@ -191,14 +222,13 @@ export default function ({ types: t }) {
                 // Create switch cases from grouped nodes
                 // Start state first
                 switchCases.push(
-                    t.switchCase(t.stringLiteral(startState), nodesByState.get(startState))
+                    t.switchCase(t.stringLiteral(startState), nodesByState.get(startState) || []) // Provide default empty array
                 );
 
                 // Then label states
                 labels.forEach(({ stateName }) => {
                     const caseBody = nodesByState.get(stateName) || [];
-                    // Add fallthrough logic (simplified: assume end state unless goto happens)
-                    // A real implementation needs better control flow analysis.
+                    // Add fallthrough logic (simplified)
                     caseBody.push(t.expressionStatement(t.assignmentExpression('=', stateVar, t.stringLiteral(endState))));
                     caseBody.push(t.continueStatement());
 
