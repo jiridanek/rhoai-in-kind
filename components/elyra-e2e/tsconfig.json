@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "~/*": [" ./node_modules/odh-dashboard-frontend/frontend/*"],
+      "@mf/*": ["../@mf-types/@mf/*"]
+    },
+    "compilerOptions": {
+      "types": [
+        "node",
+        "cypress",
+        "@testing-library/cypress",
+        //      "cypress-axe",
+        //      "cypress-plugin-steps",
+        //      "@cypress/grep"
+      ]
+    }
+//    "paths": {
+//      "@/*": ["src/*"]
+//    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}
