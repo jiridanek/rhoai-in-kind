@@ -1,4 +1,5 @@
 import * as t from '@babel/types';
+import { generate } from '@babel/generator';
 import traverse, { NodePath, Visitor, Scope, Binding } from '@babel/traverse';
 
 export function fromHere() {
@@ -278,6 +279,24 @@ export default function ({ types }: { types: typeof t }): PluginDefinition {
                     ...necessaryDeclarationNodes,
                     ...afterStatementsPaths.map(p => p.node)
                 ];
+
+                // add empty statements to the shortened function to match the original line count
+                // because intellij runs playwright tests by specifying the test function's line number
+                let newBody = t.blockStatement(newBodyStatements)
+                let code = generate(newBody).code;
+                let loc = (code?.match(/\n/g) || []).length + 1;
+                const bodyNode = functionBodyPath.node;
+                if (!bodyNode.loc) {
+                    throw new Error('Function body does not have a location.');
+                }
+                const originalLineCount = bodyNode.loc.end.line - bodyNode.loc.start.line + 1;
+                const diff = originalLineCount - loc;
+                if (diff < 0) {
+                    throw new Error(`Function body has ${loc} lines, but the original had ${originalLineCount}. Das ist nicht moglich!`);
+                }
+                for (let i = 0; i < diff; i++) {
+                    newBodyStatements.push(t.emptyStatement());
+                }
 
                 // --- Step 6: Replace the body ---
                 functionBodyPath.replaceWith(t.blockStatement(newBodyStatements));
