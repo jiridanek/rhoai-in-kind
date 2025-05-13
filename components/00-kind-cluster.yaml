@@ -1,5 +1,9 @@
+# https://kind.sigs.k8s.io/docs/user/configuration/
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: "0.0.0.0"
+  apiServerPort: 6443
 nodes:
   - role: control-plane
     extraPortMappings:
@@ -11,7 +15,4 @@ nodes:
         protocol: TCP
       - containerPort: 30730
         hostPort: 443
-        protocol: TCP
-      - containerPort: 6443
-        hostPort: 6443
         protocol: TCP
