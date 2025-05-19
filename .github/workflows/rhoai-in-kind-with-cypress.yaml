@@ -2,6 +2,8 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # at 02:00
 
 jobs:
   rhoai-in-kind:
