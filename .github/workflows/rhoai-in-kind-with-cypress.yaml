@@ -52,6 +52,17 @@ jobs:
       - name: Deploy stuff into Kubernetes
         run: python3 components/deploy.py
 
+      - name: Print nbc logs
+        if: "!cancelled()"
+        run: |
+          kubectl describe pods -n redhat-ods-applications -l app=notebook-controller
+          kubectl logs -n redhat-ods-applications -l app=notebook-controller
+      - name: Print odh nbc logs
+        if: "!cancelled()"
+        run: |
+          kubectl describe pods -n redhat-ods-applications -l app=odh-notebook-controller
+          kubectl logs -n redhat-ods-applications -l app=odh-notebook-controller
+
       # this is probably better done with Kyverno
 
       - name: Bring down Small workbench resource requests
@@ -135,3 +146,14 @@ jobs:
         with:
           name: cypress-videos-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/videos
+
+      - name: Print nbc logs (again, at the end)
+        if: "!cancelled()"
+        run: |
+          kubectl describe pods -n redhat-ods-applications -l app=notebook-controller
+          kubectl logs -n redhat-ods-applications -l app=notebook-controller
+      - name: Print odh nbc logs (again, at the end)
+        if: "!cancelled()"
+        run: |
+          kubectl describe pods -n redhat-ods-applications -l app=odh-notebook-controller
+          kubectl logs -n redhat-ods-applications -l app=odh-notebook-controller
