@@ -66,6 +66,8 @@ spec:
       mutate:
         foreach:
           - list: "request.object.spec.tags"
+            # E0519 11:26:30.606992       1 reflector.go:147] go/pkg/mod/k8s.io/client-go@v0.29.0/tools/cache/reflector.go:229: Failed to watch *v1.ImageStream: failed to list *v1.ImageStream:
+            #  json: cannot unmarshal string into Go struct field TagEvent.items.status.tags.items.generation of type int64
             patchesJson6902: |-
               - path: /status/tags/-
                 op: add
@@ -74,7 +76,7 @@ spec:
                   items:
                     - dockerImageReference: "{{ element.from.name || '' }}"
                       image: "{{ split(element.from.name || '', '@')[1] || '' }}"
-                      generation: "{{ element.generation || '' }}"
+                      generation: {{ request.object.metadata.generation || '0' }}
                       created: "{{ time_now_utc() }}"
 #            patchStrategicMerge:
 #              status:
