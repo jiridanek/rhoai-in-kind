@@ -96,6 +96,9 @@ jobs:
           # dumb, xterm, xterm-256color
           TERM: xterm-256color
 
+      # Error: The artifact name is not valid: cypress-videos-**/workbenches/testWorkbenchVariables.cy.ts. Contains the following character:  Asterisk *
+      # Invalid characters include:
+      #  Double quote ", Colon :, Less than <, Greater than >, Vertical bar |, Asterisk *, Question mark ?, Carriage return \r, Line feed \n, Backslash \, Forward slash /
       - name: Compute test-output name
         if: "!cancelled()"
         id: artifact-name
@@ -108,6 +111,9 @@ jobs:
           
           test_case = os.environ["TEST_CASE"]
           artifact_name = re.sub(r'^.*/(?P<filename>[^/]+)\.robot$', r'\g<filename>', test_case)
+          forbidden_characters = "\"\\*/"
+          table = str.maketrans(forbidden_characters, "_" * len(forbidden_characters))
+          artifact_name = artifact_name.translate(table)
           pathlib.Path(os.environ["GITHUB_OUTPUT"]).write_text(f"artifact-name={artifact_name}")
         env:
           TEST_CASE: ${{ matrix.test_case }}
