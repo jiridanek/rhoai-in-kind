@@ -18,7 +18,8 @@ def main():
 
     # slow to deploy so do it first
     with gha_log_group("Install Kyverno"):
-        sh("kubectl create -k components/02-kyverno")
+        # https://kubernetes.io/blog/2022/10/20/advanced-server-side-apply/
+        sh("timeout 30s bash -c 'while ! kubectl apply --server-side -k components/02-kyverno; do sleep 1; done'")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
 
