@@ -90,6 +90,9 @@ spec:
       managementState: Managed
     trainingoperator:
       managementState: Removed
+    modelregistry:
+      registriesNamespace: ""
+      managementState: Removed
 status:
   components: {}
   conditions:
