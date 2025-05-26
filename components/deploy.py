@@ -94,10 +94,10 @@ def main():
         # and it needs a clusterrole system:image-puller to exist, which does not exsist on kind by default
         sh("kubectl get namespace rhods-notebooks || kubectl create namespace rhods-notebooks")
         # dummy verb and resource, just to have something there
-        sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io")
+        sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io --dry-run=client -o yaml | kubectl apply -f -")
         # I have no idea why the next line was needed; it is not mentioned in dashboard sources except in manifests
         # that should've created this already!?!
-        sh("kubectl create clusterrole cluster-monitoring-view --verb=list --resource=imagestreams.image.openshift.io")
+        sh("kubectl create clusterrole cluster-monitoring-view --verb=list --resource=imagestreams.image.openshift.io --dry-run=client -o yaml | kubectl apply -f -")
         # this is to mitigate fallout from https://github.com/opendatahub-io/odh-dashboard/pull/4049
         # not sure if this is permanent or just a temporary workaround, NOTE: rhods-notebooks serviceaccount!
         # language=Yaml
@@ -190,8 +190,8 @@ def main():
             # foo-user,
             "contributor-username", "adminuser",
         ]:
-            sh(f"kubectl create serviceaccount -n oauth-server {username}")
-            sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --serviceaccount=oauth-server:{username}")
+            sh(f"kubectl create serviceaccount -n oauth-server {username} --dry-run=client -o yaml | kubectl apply -f -")
+            sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --serviceaccount=oauth-server:{username} --dry-run=client -o yaml | kubectl apply -f -")
 
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
