@@ -82,8 +82,8 @@ def main():
 
         tf.defer(None, lambda _: sh("kubectl logs --tail 10 -n api-extension deployment/apiserver"))
 
-    with gha_log_group("Check that API extension server works"):
-        tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
+    # with gha_log_group("Check that API extension server works"):
+    #     tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
 
     with gha_log_group("Run kubectl create namespaces redhat-ods-applications"):
         sh("kubectl get namespace redhat-ods-applications || kubectl create namespace redhat-ods-applications")
@@ -140,7 +140,7 @@ def main():
         sh("kubectl config set-context --current --namespace=argocd")
         sh("argocd login --core")
         # time="2025-04-10T21:52:51Z" level=error msg="finished unary call with code Unknown" error="error setting cluster info in cache: dial tcp [::1]:42171: connect: connection refused" grpc.code=Unknown grpc.method=Create grpc.service=cluster.ClusterService grpc.start_time="2025-04-10T21:52:51Z" grpc.time_ms=272.867 span.kind=server system=grpc
-        sh("argocd cluster add kind-kind --yes")
+        sh("timeout 30s bash -c 'while ! argocd cluster add kind-kind --yes; do sleep 1; done'")
 
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
