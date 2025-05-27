@@ -48,6 +48,11 @@ jobs:
           sudo mv components/gha/etc_docker_daemon.json /etc/docker/daemon.json
           sudo systemctl restart docker
 
+      # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
+      #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
+      - name: Pre-pull the kind image
+        run: timeout 120s bash -c 'while ! docker pull kindest/node:v1.31.6; do sleep 1; done'
+
       - name: Kubernetes KinD Cluster
         uses: helm/kind-action@v1
         with:
