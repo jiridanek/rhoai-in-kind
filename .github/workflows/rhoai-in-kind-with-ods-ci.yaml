@@ -22,6 +22,32 @@ jobs:
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
 
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
+          # TODO: Executing keyword 'Login To Openshift' failed
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
+          # TODO: Executing keyword 'Login To Openshift' failed
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-notebook.robot"
+          # TODO: Executing keyword 'Login To Openshift' failed
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-time.robot"
+          # TODO: rhds/main is not kept up to date, so this is failing
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-versions.robot"
+
+          # TODO: looks broken, menu navigation is weird
+          #- "tests/Tests/0500__ide/0507__culler/culler.robot"
+
+          # oc new-project "elyra-test-6893" --display-name="elyra-test-6893" --description="testing Elyra pipeline functionality" --as=ldap-user2 --as-group=system:authenticated --as-group=system:authenticated:oauth 2>&1
+          #- "tests/Tests/0500__ide/0502__ide_elyra.robot"
+
+          # my env does make everyone cluster-admin, so perms tests are meaningless
+          - "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
+          # TODO: 9) error: the server doesn't have a resource type "group": 1 != 0
+          #- "tests/Tests/0500__ide/0501__ide_jupyterhub/jupyterhub-user-access.robot"
+
           # logs into openshift web console which we don't have here
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
 
@@ -100,7 +126,7 @@ jobs:
       - name: Run ods-ci tests
         run: |
           set -Eeuxo pipefail
-          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI -e Resources-GPU -e ODS-127'
+          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI -e Resources-GPU'
         # the location is important and it's not worth it to change it
         # * poetry looks for the lock file in what is the current directory or its parents
         # * by default TEST_CASE_FILE=tests/Tests
