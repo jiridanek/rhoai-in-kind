@@ -25,6 +25,7 @@ jobs:
         run: timeout 120s bash -c 'while ! docker pull kindest/node:v1.31.6; do sleep 1; done'
 
       - name: Kubernetes KinD Cluster
+        id: kind-cluster
         uses: helm/kind-action@v1
         with:
           version: v0.27.0
@@ -71,7 +72,7 @@ jobs:
       - name: Collect logs
         run: python3 components/logs.py
         id: collect-logs
-        if: "!cancelled()"
+        if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v4
