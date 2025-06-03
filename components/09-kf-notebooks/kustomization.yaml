@@ -18,9 +18,9 @@ kind: Kustomization
 namespace: redhat-ods-applications
 resources:
   # the git urls will fail in github actions
-  #- git@github.com:opendatahub-io/kubeflow.git/components/notebook-controller/config/overlays/kubeflow/
+  #- git@github.com:opendatahub-io/kubeflow.git/components/notebook-controller/config/overlays/openshift/
   #- git@github.com:opendatahub-io/kubeflow.git/components/odh-notebook-controller/config/base/
-  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/kubeflow/
+  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/openshift/
   - https://github.com/opendatahub-io/kubeflow//components/odh-notebook-controller/config/base/
   - culler-config.yaml
 
@@ -32,6 +32,15 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/args/1
         value: quay.io/jdanek/origin-oauth-proxy:latest
+  # ods-ci relies on this label in culler.robot tests
+  # oc get pod -l component.opendatahub.io/name=kf-notebook-controller -n redhat-ods-applications
+  - target:
+      kind: Deployment
+      name: notebook-controller-deployment
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/labels/component.opendatahub.io~1name
+        value: kf-notebook-controller
 ---
 # https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
 #apiVersion: argoproj.io/v1alpha1
