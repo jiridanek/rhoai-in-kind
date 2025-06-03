@@ -43,8 +43,7 @@ jobs:
           # TODO: rhds/main is not kept up to date, so this is failing
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-versions.robot"
 
-          # TODO: looks broken, menu navigation is weird
-          #- "tests/Tests/0500__ide/0507__culler/culler.robot"
+          - "tests/Tests/0500__ide/0507__culler/culler.robot"
 
           # oc new-project "elyra-test-6893" --display-name="elyra-test-6893" --description="testing Elyra pipeline functionality" --as=ldap-user2 --as-group=system:authenticated --as-group=system:authenticated:oauth 2>&1
           #- "tests/Tests/0500__ide/0502__ide_elyra.robot"
