@@ -94,6 +94,16 @@ jobs:
       - name: Deploy stuff into Kubernetes
         run: python3 components/deploy.py
 
+      # ✘ Istiod encountered an error: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
+      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")Error: failed to install manifests: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
+      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")
+      # CAUTION: the image tag is likely to go out of date, try to keep in sync
+      - name: Pre-pull istio inside kind cluster
+        run: |
+          set -Eeuxo pipefail
+          timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.25.1; do sleep 1; done'
+          kind load docker-image docker.io/istio/pilot:1.25.1
+
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
       - name: Install Poetry
