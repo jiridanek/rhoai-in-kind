@@ -39,6 +39,13 @@ jobs:
           sparse-checkout: |
             frontend/
 
+      # Otherwise we may end up with a random Python version?
+      # https://github.com/jiridanek/rhoai-in-kind/issues/16
+      - uses: actions/setup-python@v5
+        id: setup-python
+        with:
+          python-version: '3.13'
+
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
       - name: Pre-pull the kind image
@@ -66,7 +73,9 @@ jobs:
           kind load docker-image docker.io/istio/pilot:1.25.1
 
       - name: Deploy stuff into Kubernetes
-        run: python3 components/deploy.py
+        run: ${PYTHON3} components/deploy.py
+        env:
+          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Print nbc logs
         if: "!cancelled()"
@@ -175,9 +184,11 @@ jobs:
           kubectl logs -n redhat-ods-applications -l app=odh-notebook-controller
 
       - name: Collect logs
-        run: python3 components/logs.py
+        run: ${PYTHON3} components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
+        env:
+          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v4
