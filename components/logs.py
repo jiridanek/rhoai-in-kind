@@ -8,32 +8,72 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Callable
+from typing import Callable, Dict, Any, List
 
+"""
+TODO:
+* kubectl describe
+* kubectl logs --previous
+* must-gather
+"""
 
-def run_command[**P](command: str, command_args: list[str],
-                     runner: Callable[P, subprocess.CompletedProcess[str]] = subprocess.run, **kwargs: P.kwargs) -> str:
+def run_command[**P](
+        command: str, command_args: list[str],
+        runner: Callable[P, subprocess.CompletedProcess[str]] = subprocess.run,
+        check: bool = False,
+        **kwargs: P.kwargs
+) -> str:
+    """
+    Runs a command using subprocess.run, forwarding keyword arguments.
+
+    Args:
+        command: The base command (e.g., "kubectl").
+        command_args: A list of arguments for the command.
+        runner: The function to use for running the command (defaults to subprocess.run).
+        **kwargs: Keyword arguments to pass directly to the runner function.
+                  These should match the valid keyword arguments for the runner (e.g., subprocess.run).
+
+    Returns:
+        The standard output of the command as a string, stripped of leading/trailing whitespace.
+
+    Exits:
+        If the command fails (non-zero exit code) or the command is not found.
+    """
     full_command = [command] + command_args
     try:
-        result = runner(args=full_command, text=True, stdout=subprocess.PIPE, **kwargs)
+        # Pass kwargs directly to the runner
+        # Ensure text=True and stdout=subprocess.PIPE are defaults unless overridden
+        merged_kwargs = {'text': True, 'stdout': subprocess.PIPE, **kwargs}
+
+        result = runner(args=full_command, **merged_kwargs)
         result.check_returncode()  # Explicitly check return code
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Error executing {command} command: {' '.join(full_command)}")
-        print(f"Stdout: {e.stdout}")  # It's useful to see stdout on error too
-        print(f"Stderr: {e.stderr}")
-        sys.exit(e.returncode)  # Exit with the command's return code
+        print(f"Error executing command: {' '.join(full_command)}")
+        print(f"Return code: {e.returncode}")
+        # It's useful to see stdout/stderr on error
+        if e.stdout:
+            print(f"Stdout:\n{e.stdout.strip()}")
+        if e.stderr:
+            print(f"Stderr:\n{e.stderr.strip()}")
+        if check:
+            sys.exit(e.returncode)  # Exit with the command's return code
+        return e.stdout.strip()
     except FileNotFoundError:
         print(f"Error: '{command}' command not found. Please ensure {command} is installed and in your PATH.")
         sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred while running command {' '.join(full_command)}: {e}")
+        sys.exit(1)
 
 
-def run_kubectl_command(command_args: list[str]) -> str:
+def run_kubectl_command(command_args: list[str], **kwargs: Dict[str, Any]) -> str:
     """
     Runs a kubectl command and returns its stdout.
     Exits if the command fails.
+    Forwards kwargs to run_command (and thus subprocess.run).
     """
-    return run_command("kubectl", command_args)
+    return run_command("kubectl", command_args, **kwargs)
 
 
 def sanitize_filename(name: str):
@@ -41,7 +81,181 @@ def sanitize_filename(name: str):
     return ''.join(c if c.isalnum() or c in ['-', '_', '.'] else '_' for c in name)
 
 
-def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-logs", log_since="10m",
+def get_api_group_from_apiversion(api_version: str) -> str:
+    """Extracts the API group from an apiVersion string."""
+    if '/' not in api_version:
+        # Core API group (e.g., "v1")
+        return "core"
+    return api_version.split('/')[0]
+
+
+@dataclasses.dataclass
+class Resource:
+    """
+    Represents a Kubernetes resource type.
+    """
+    api_version: str
+    kind: str
+
+def discover_api_resources() -> tuple[list[Resource], list[Resource]]:
+    """
+    Discovers available API resources using 'kubectl api-resources'.
+
+    Returns:
+        A tuple containing two lists: (cluster_scoped_types, namespaced_types).
+    """
+    print("Discovering API resources...")
+    output = run_kubectl_command(["api-resources", "--no-headers=true", "-o", "wide"])
+
+    cluster_scoped_types = []
+    namespaced_types = []
+
+    # Parse the output (assuming standard wide format: NAME SHORTNAMES APIVERSIONS NAMESPACED KIND)
+    # We need the first column (NAME) and the fourth column (NAMESPACED)
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        # Split by whitespace, handle potential multiple spaces
+        parts = line.split()
+        if len(parts) < 5:  # Expect at least 5 columns in wide output
+            print(f"Skipping unexpected line format from api-resources: {line}", file=sys.stderr)
+            continue
+
+        resource_name = parts[0]
+        api_version = parts[2]
+        is_namespaced_str = parts[3].lower()  # 'true' or 'false'
+
+        # Skip known problematic or overly verbose types if necessary
+        # Example: "events.events.k8s.io" might be redundant if "events" is collected
+        # Or skip specific CRDs you don't need
+        # if resource_name in ["events.events.k8s.io"]:
+        #     continue
+
+        resource = Resource(api_version=api_version, kind=resource_name)
+        if is_namespaced_str == 'true':
+            namespaced_types.append(resource)
+        elif is_namespaced_str == 'false':
+            cluster_scoped_types.append(resource)
+        # else: unexpected value in NAMESPACED column
+
+    print(
+        f"Discovered {len(cluster_scoped_types)} cluster-scoped and {len(namespaced_types)} namespaced resource types.")
+    return cluster_scoped_types, namespaced_types
+
+
+def collect_kubernetes_resources(output_dir="ci-debug-bundle"):
+    """
+    Collects Kubernetes resource definitions (YAML) from the cluster.
+
+    Args:
+        output_dir (str): Base directory to save resources.
+    """
+    print(f"Starting resource collection into '{output_dir}'...")
+
+    cluster_scoped_dir = os.path.join(output_dir, "cluster-scoped-resources")
+    namespaces_dir = os.path.join(output_dir, "namespaces")
+
+    os.makedirs(cluster_scoped_dir, exist_ok=True)
+    os.makedirs(namespaces_dir, exist_ok=True)
+
+    # --- Discover Resource Types Dynamically ---
+    cluster_scoped_types, namespaced_types = discover_api_resources()
+
+    # --- Collect Cluster-Scoped Resources ---
+    print("\nCollecting cluster-scoped resources...")
+    for resource_type in cluster_scoped_types:
+        print(f"  Collecting {resource_type.kind}...")
+        try:
+            # Use --ignore-not-found to skip types that don't exist in the cluster
+            # Use --chunk-size=0 to attempt to get all items in one go for large clusters
+            output = run_kubectl_command(
+                ["get", resource_type.kind, "-o", "yaml", "--ignore-not-found=true", "--chunk-size=0"])
+            if not output.strip():
+                # print(f"    No {resource_type} found or type does not exist.") # Can be noisy
+                continue
+
+            api_version = resource_type.api_version
+            kind = resource_type.kind
+            api_group = get_api_group_from_apiversion(api_version)
+
+            # Create directory structure: cluster-scoped-resources/<api_group>/<kind>.yaml
+            resource_type_dir = os.path.join(cluster_scoped_dir, sanitize_filename(api_group))
+            os.makedirs(resource_type_dir, exist_ok=True)
+
+            file_path = os.path.join(resource_type_dir, f"{sanitize_filename(kind.lower())}.yaml")
+            with open(file_path, "w") as f:
+                f.write(output)
+            # print(f"    Saved {kind} '{name}'") # Optional: print each saved resource
+        except SyntaxError | TypeError | ValueError:
+            raise
+        except Exception as e:
+            print(f"    An unexpected error occurred collecting {resource_type}: {e}", file=sys.stderr)
+
+    # --- Collect Namespaced Resources ---
+    print("\nCollecting namespaced resources...")
+    namespaces_output = run_kubectl_command([
+        "get", "namespaces",
+        "-o", "jsonpath={.items[*].metadata.name}"
+    ])
+    all_namespaces = namespaces_output.split() if namespaces_output else []
+
+    if not all_namespaces:
+        print("No namespaces found in the cluster. Skipping namespaced resource collection.")
+        return
+
+    for namespace in all_namespaces:
+        print(f"  Collecting resources for namespace: {namespace}")
+        namespace_output_dir = os.path.join(namespaces_dir, sanitize_filename(namespace))
+        os.makedirs(namespace_output_dir, exist_ok=True)
+
+        # Save the namespace definition itself
+        try:
+            # NOTE: this may fail if namespace was terminating
+            ns_yaml = run_kubectl_command(["get", "namespace", namespace, "-o", "yaml"])
+            with open(os.path.join(namespace_output_dir, f"{sanitize_filename(namespace)}.yaml"), "w") as f:
+                f.write(ns_yaml)
+        except Exception as e:
+            print(f"    Error collecting namespace definition for {namespace}: {e}", file=sys.stderr)
+
+        for resource_type in namespaced_types:
+            print(f"    Collecting {resource_type.kind} in {namespace}...")  # Can be noisy
+            try:
+                # Use --ignore-not-found to skip types that don't exist in the namespace or cluster
+                # Use --chunk-size=0 for large namespaces
+                output = run_kubectl_command(
+                    ["get", resource_type.kind, "-n", namespace, "-o", "yaml", "--ignore-not-found=true", "--chunk-size=0"])
+
+                if not output.strip():
+                    print(f"      No {resource_type.kind} found in {namespace}.")  # Can be noisy
+                    continue
+
+                api_version = resource_type.api_version
+                kind = resource_type.kind
+                api_group = get_api_group_from_apiversion(api_version)
+
+                # Handle core resources specifically
+                if api_group == "core":
+                    resource_type_dir = os.path.join(namespace_output_dir, "core")
+                else:
+                    # Structure: namespaces/<namespace>/<api_group>/<kind>s.yaml
+                    resource_type_dir = os.path.join(namespace_output_dir, sanitize_filename(api_group))
+
+                os.makedirs(resource_type_dir, exist_ok=True)
+
+                file_path = os.path.join(resource_type_dir, f"{sanitize_filename(kind.lower())}s.yaml")
+                with open(file_path, "w") as f:
+                    f.write(output)
+                # print(f"      Saved {kind} '{name}' in {namespace}") # Optional: print each saved resource
+            except SyntaxError | TypeError | ValueError:
+                raise
+            except Exception as e:
+                print(f"    An unexpected error occurred collecting {resource_type} in {namespace}: {e}",
+                      file=sys.stderr)
+
+    print("\nResource collection complete.")
+
+
+def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-debug-bundle/logs", log_since="10m",
                                                     namespace_label="collect_logs=true"):
     """
     Collects Kubernetes pod logs into structured directories using kubectl via subprocess.
@@ -55,11 +269,13 @@ def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-logs", log_sinc
     print(f"Starting log collection into '{logs_dir}'...")
 
     # Get namespaces with the specified label using kubectl
+    # Use --ignore-not-found=true in case the label doesn't match any namespaces
     namespaces_output = run_kubectl_command([
         "get", "namespaces",
         "-l", namespace_label,
-        "-o", "jsonpath={.items[*].metadata.name}"
-    ])
+        "-o", "jsonpath={.items[*].metadata.name}",
+        "--ignore-not-found=true"
+    ]).split()
 
     target_namespaces = namespaces_output.split() if namespaces_output else []
 
@@ -68,30 +284,32 @@ def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-logs", log_sinc
         target_namespaces = run_kubectl_command([
             "get", "namespaces",
             "-o", "jsonpath={.items[*].metadata.name}\n"
-        ])
+        ]).split()
 
     stern_processes: list[subprocess.Popen] = []  # To keep track of background stern processes
 
-    for namespace in target_namespaces.split():
+    for namespace in target_namespaces:  # Iterate directly over the list
         print(f"\nCollecting logs for namespace: {namespace}")
         namespace_dir = os.path.join(logs_dir, sanitize_filename(namespace))
         os.makedirs(namespace_dir, exist_ok=True)
 
         # Get pod names in the current namespace using kubectl
+        # Use --ignore-not-found=true in case there are no pods in the namespace
         pods_output = run_kubectl_command([
             "get", "pods",
             "-n", namespace,
-            "-o", "jsonpath={.items[*].metadata.name}"
+            "-o", "jsonpath={.items[*].metadata.name}",
+            "--ignore-not-found=true"
         ])
 
         target_pods = pods_output.split() if pods_output else []
 
         if not target_pods:
-            print(f"  No pods found in namespace {namespace}. Skipping.")
+            print(f"  No pods found in namespace {namespace}. Skipping log collection for this namespace.")
             continue
 
         for pod_name in target_pods:
-            print(f"    - Collecting logs for pod: {pod_name}")
+            # print(f"    - Collecting logs for pod: {pod_name}") # Can be noisy
             sanitized_pod_name = sanitize_filename(pod_name)
             log_file_path = os.path.join(namespace_dir, f"{sanitized_pod_name}.log")
 
@@ -108,35 +326,47 @@ def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-logs", log_sinc
 
             try:
                 # Start stern as a background process and redirect output
+                # Use a context manager for the file to ensure it's closed
                 with open(log_file_path, "w") as outfile:
+                    # Use subprocess.Popen for background process
                     process = subprocess.Popen(stern_command, stdout=outfile, stderr=subprocess.STDOUT)
                     stern_processes.append(process)
             except FileNotFoundError:
-                print("    Error: 'stern' command not found. Stern must be installed and in your PATH.")
-                sys.exit(1)  # Consider if exiting immediately is desired for one missing stern
+                print("    Error: 'stern' command not found. Stern must be installed and in your PATH.",
+                      file=sys.stderr)
+                # Exiting immediately is safer if stern is a hard requirement
+                sys.exit(1)
             except Exception as e:
-                print(f"    Error starting stern for {pod_name} in namespace {namespace}: {e}")
+                print(f"    Error starting stern for {pod_name} in namespace {namespace}: {e}", file=sys.stderr)
 
-    if stern_processes:  # Only wait if stern processes were started
+    if stern_processes:
         print("\nWaiting for all stern processes to complete...")
-        for proc in stern_processes:
-            proc.wait()  # Wait for each background process to finish
+        # Use wait() in a loop to catch potential issues, though wait() on Popen is blocking
+        # A more advanced approach might use select or asyncio, but wait() is simpler here.
+        for i, proc in enumerate(stern_processes):
+            try:
+                proc.wait()
+                # print(f"Stern process {i+1}/{len(stern_processes)} finished.") # Optional progress
+            except Exception as e:
+                print(f"Error waiting for stern process {i + 1}: {e}", file=sys.stderr)
+
     else:
-        print("\nNo stern processes were started.")
+        print("\nNo stern processes were started for log collection.")
 
     returncodes = [proc.returncode for proc in stern_processes]
     if any(rc != 0 for rc in returncodes):
         cnt = sum(rc != 0 for rc in returncodes)
         total = len(returncodes)
-        print(f"\nWarning: {cnt}/{total} stern processes finished with non-zero exit codes.")
+        print(f"\nWarning: {cnt}/{total} stern processes finished with non-zero exit codes.", file=sys.stderr)
 
     print(f"Log collection complete. Logs are available in the '{logs_dir}' directory.")
 
+    # GITHUB_OUTPUT logic remains the same
     if "GITHUB_ACTIONS" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "at") as f:
             print(f'logs_dir={logs_dir}', file=f)
     else:
-        logging.info("Not running on Github Actions, won't produce GITHUB_OUTPUT")
+        logging.info("Not running on Github Actions, won't produce GITHUB_OUTPUT for logs")
 
 
 def check_command_exists(command: str) -> bool:
@@ -152,36 +382,64 @@ def install_stern(version="1.32.0", arch="linux_amd64", path="/usr/local/bin", r
     # Download with retries
     for attempt in range(retries):
         try:
-            if os.path.exists(archive): os.remove(archive)  # Clean up partial download
+            if os.path.exists(archive):
+                os.remove(archive)  # Clean up partial download
             print(f"Attempt {attempt + 1}/{retries}: Downloading {archive} from {url}...")
-            subprocess.run(["curl", "--location", "--remote-name", url], check=True, capture_output=True)
-            break
+            subprocess.run([
+                "curl",
+                "--location",
+                "--remote-name",
+                # curl: You must select either --fail or --fail-with-body, not both.
+                "--fail-with-body",
+                "--retry", str(retries),
+                "--retry-delay", str(delay),
+                url
+            ], check=True, capture_output=True)
+            print("Download successful.")
+            break  # Exit retry loop on success
         except subprocess.CalledProcessError as e:
-            print(f"Download failed: {e.stderr.decode().strip()}", file=sys.stderr)
-            if attempt == retries - 1: sys.exit(1)  # Exhausted retries
+            print(f"Download failed (Attempt {attempt + 1}/{retries}): {e.stderr.decode().strip()}", file=sys.stderr)
+            if attempt == retries - 1:
+                sys.exit(f"Exhausted retries. Failed to download {archive}.")
             time.sleep(delay)
         except FileNotFoundError:
             sys.exit("Error: 'curl' not found. Please install it.")
         except Exception as e:
-            print(f"Unexpected download error: {e}", file=sys.stderr);
+            print(f"Unexpected download error: {e}", file=sys.stderr)
             sys.exit(1)
     else:
-        sys.exit("Failed to download after all attempts.")  # Fallback if loop finishes without break
+        # This else block is reached if the loop finishes *without* a break
+        # The sys.exit inside the loop handles the exhausted retries case,
+        # so this might be redundant but harmless.
+        sys.exit("Failed to download after all attempts (loop finished without break).")
 
     # Extract and Install
     try:
+        print(f"Extracting {archive}...")
         subprocess.run(["tar", "--extract", "--gzip", "--file", archive], check=True, capture_output=True)
+        print("Extraction successful.")
+
+        print(f"Installing stern to {path}...")
+        # Ensure target directory exists before moving
+        os.makedirs(path, exist_ok=True)
+        # Corrected chmod to not be recursive
         subprocess.run(["sudo", "mv", "--target-directory", path, "stern"], check=True, capture_output=True)
-        subprocess.run(["sudo", "chmod", "--recursive", "+x", os.path.join(path, "stern")], check=True,
-                       capture_output=True)
-        print(f"Stern v{version} installed successfully!")
+        subprocess.run(["sudo", "chmod", "+x", os.path.join(path, "stern")], check=True, capture_output=True)
+        print(f"Stern v{version} installed successfully to {os.path.join(path, 'stern')}!")
     except FileNotFoundError as e:
-        sys.exit(f"Error: Command not found ({e}). Ensure tar/sudo/mv/chmod are installed.")
+        sys.exit(f"Error: Command not found during installation ({e}). Ensure tar, sudo, mv, chmod are installed.")
     except subprocess.CalledProcessError as e:
-        sys.exit(f"Install failed: {e.stderr.decode().strip()}")
+        print(f"Install failed: {e.stderr.decode().strip()}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error during installation: {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
-        if os.path.exists(archive): os.remove(archive)
-        if os.path.exists("stern"): os.remove("stern")
+        # Clean up downloaded archive and extracted binary from current dir
+        if os.path.exists(archive):
+            os.remove(archive)
+        if os.path.exists("stern"):
+            os.remove("stern")
 
 
 @contextlib.contextmanager
@@ -198,68 +456,95 @@ def gha_log_group(title: str) -> None:
 
 def print_notebook_logs():
     """
-    Collects logs from all notebooks in the current directory and prints them.
+    Collects logs from specific notebook-related pods and prints them to stdout.
+    This is likely for interactive debugging rather than file collection.
     """
-    print("\nCollecting logs from notebooks:")
+    print("\nCollecting logs from notebook controllers (printing to stdout):")
     subprocess.run(
         '''stern --selector "app in (notebook-controller, odh-notebook-controller)" -n redhat-ods-applications --no-follow --tail -1 --timestamps --color always | sort -k3''',
-        shell=True, check=True)
+        shell=True, check=True,
+    )
 
 
 # Define a dataclass to hold the parsed arguments
 @dataclasses.dataclass()
 class ScriptArgs:
     """
-    Dataclass to hold command-line arguments for log collection.
+    Dataclass to hold command-line arguments for log and resource collection.
     """
-    logs_dir: str = dataclasses.field(
-        default="ci-kubernetes-logs",
-        metadata={"help": "Base directory to save collected logs."}
+    output_dir: str = dataclasses.field(
+        default="ci-debug-bundle",
+        metadata={"help": "Base directory to save collected resources and logs."}
     )
-    since: str = dataclasses.field(
+    log_since: str = dataclasses.field(
         default="10m",
-        metadata={"help": "Duration for logs to collect (e.g., '5s', '2m', '1h')."}
+        metadata={"help": "Duration for logs to collect (e.g., '5s', '2m', '1h'). Only applies to log collection."}
     )
-    namespace_label: str = dataclasses.field(
+    log_namespace_label: str = dataclasses.field(
         default="collect_logs=true",
         metadata={"help": "Label selector for namespaces to collect logs from (e.g., 'env=prod')."}
     )
-    # The dataclass_fields property is no longer needed with dataclasses.fields()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Collects Kubernetes pod logs from labeled namespaces into structured directories."
+        description="Collects Kubernetes resources and pod logs from the cluster into structured directories, similar to must-gather."
     )
 
     # Add arguments to the parser based on the dataclass fields
-    # We iterate through the fields of ScriptArgs to automatically add them
     for field_obj in dataclasses.fields(ScriptArgs):
+        arg_name = field_obj.name.replace('_', '-')
         parser.add_argument(
-            f"--{field_obj.name.replace('_', '-')}",  # Convert snake_case to kebab-case for CLI
+            f"--{arg_name}",
             type=field_obj.type,
             default=field_obj.default,
             help=field_obj.metadata.get("help", "") + f" (default: {field_obj.default})"
         )
 
-    # parser.parse_args() returns a Namespace object.
-    # For type safety and to use ScriptArgs features (if any were added later),
-    # it's better to instantiate ScriptArgs.
     parsed_namespace = parser.parse_args()
     args = ScriptArgs(**vars(parsed_namespace))  # Instantiate ScriptArgs
 
-    if not check_command_exists("stern"):
-        install_stern()
+    # Check for kubectl first, as it's required for both resource and log collection
+    if not check_command_exists("kubectl"):
+        sys.exit("Error: 'kubectl' command not found. Please ensure kubectl is installed and in your PATH.")
 
-    with gha_log_group("collecting logs to files"):
-        collect_kubernetes_logs_with_kubectl_subprocess(
-            logs_dir=args.logs_dir,
-            log_since=args.since,
-            namespace_label=args.namespace_label
-        )
+    # Resource collection doesn't strictly need stern, but log collection does.
+    # Install stern if not present before attempting log collection.
+    stern_exists = check_command_exists("stern")
+    if not stern_exists:
+        print("Stern command not found. Attempting to install stern for log collection.")
+        install_stern()  # This function exits on failure
 
-    with gha_log_group("nbc controller logs"):
-        print_notebook_logs()
+    # Use the output_dir argument for both resources and logs, creating subdirectories within it.
+    resource_output_dir = args.output_dir  # Resources go directly into the base output dir
+    log_output_dir = os.path.join(args.output_dir, "logs")  # Logs go into a 'logs' subdirectory
+
+    # Collect resources first
+    with gha_log_group("collecting kubernetes resources"):
+        collect_kubernetes_resources(output_dir=resource_output_dir)
+
+    # Then collect logs (only if stern was found or successfully installed)
+    if check_command_exists("stern"):  # Re-check in case installation failed but didn't exit
+        with gha_log_group("collecting pod logs to files"):
+            collect_kubernetes_logs_with_kubectl_subprocess(
+                logs_dir=log_output_dir,  # Use the logs subdirectory
+                log_since=args.log_since,
+                namespace_label=args.log_namespace_label
+            )
+    else:
+        print("\nSkipping log collection as stern is not available.", file=sys.stderr)
+
+    # Print notebook logs (still prints to stdout)
+    with gha_log_group("nbc controller logs (stdout)"):
+        print_notebook_logs()  # This function prints directly to stdout
+
+    print(f"\nDebug bundle collection complete. Output is available in the '{args.output_dir}' directory.")
+
+    if "GITHUB_ACTIONS" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "at") as f:
+            print(f'debug_bundle_dir={args.output_dir}', file=f)
+    else:
+        logging.info("Not running on Github Actions, won't produce GITHUB_OUTPUT")
 
 
 if __name__ == "__main__":
