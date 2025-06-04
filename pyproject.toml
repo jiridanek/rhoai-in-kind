@@ -1,0 +1,17 @@
+[project]
+name = "rhoai-in-kind"
+version = "0.1.0"
+description = "Runs OpenShift AI Workbenches in GitHub Actions"
+requires-python = ">=3.13, <3.14"
+dependencies = []
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "ISC001",  # single-line-implicit-string-concatenation
+    "ISC002",  # multi-line-implicit-string-concatenation
+]
+# https://docs.astral.sh/ruff/rules/multi-line-implicit-string-concatenation/#formatter-compatibility
+flake8-implicit-str-concat.allow-multiline = false
