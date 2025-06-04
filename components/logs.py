@@ -2,22 +2,20 @@
 import argparse
 import contextlib
 import dataclasses
-import functools
 import logging
 import os
 import shutil
 import subprocess
 import sys
-import shlex  # For safely splitting commands
 import time
-from typing import cast
+from typing import Callable
 
 
-@functools.wraps(subprocess.run)
-def run_command(command: str, command_args: list[str], **kwargs) -> str:
+def run_command[**P](command: str, command_args: list[str],
+                     runner: Callable[P, subprocess.CompletedProcess[str]] = subprocess.run, **kwargs: P.kwargs) -> str:
     full_command = [command] + command_args
     try:
-        result = subprocess.run(args=full_command, text=True, stdout=subprocess.PIPE, **kwargs)
+        result = runner(args=full_command, text=True, stdout=subprocess.PIPE, **kwargs)
         result.check_returncode()  # Explicitly check return code
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -140,9 +138,11 @@ def collect_kubernetes_logs_with_kubectl_subprocess(logs_dir="ci-logs", log_sinc
     else:
         logging.info("Not running on Github Actions, won't produce GITHUB_OUTPUT")
 
+
 def check_command_exists(command: str) -> bool:
     """Checks if a given command is available in the system's PATH."""
     return shutil.which(command) is not None
+
 
 def install_stern(version="1.32.0", arch="linux_amd64", path="/usr/local/bin", retries=3, delay=5):
     """Downloads (curl with retries), extracts (tar), and installs stern."""
@@ -152,29 +152,37 @@ def install_stern(version="1.32.0", arch="linux_amd64", path="/usr/local/bin", r
     # Download with retries
     for attempt in range(retries):
         try:
-            if os.path.exists(archive): os.remove(archive) # Clean up partial download
-            print(f"Attempt {attempt+1}/{retries}: Downloading {archive} from {url}...")
+            if os.path.exists(archive): os.remove(archive)  # Clean up partial download
+            print(f"Attempt {attempt + 1}/{retries}: Downloading {archive} from {url}...")
             subprocess.run(["curl", "--location", "--remote-name", url], check=True, capture_output=True)
             break
         except subprocess.CalledProcessError as e:
             print(f"Download failed: {e.stderr.decode().strip()}", file=sys.stderr)
-            if attempt == retries - 1: sys.exit(1) # Exhausted retries
+            if attempt == retries - 1: sys.exit(1)  # Exhausted retries
             time.sleep(delay)
-        except FileNotFoundError: sys.exit("Error: 'curl' not found. Please install it.")
-        except Exception as e: print(f"Unexpected download error: {e}", file=sys.stderr); sys.exit(1)
-    else: sys.exit("Failed to download after all attempts.") # Fallback if loop finishes without break
+        except FileNotFoundError:
+            sys.exit("Error: 'curl' not found. Please install it.")
+        except Exception as e:
+            print(f"Unexpected download error: {e}", file=sys.stderr);
+            sys.exit(1)
+    else:
+        sys.exit("Failed to download after all attempts.")  # Fallback if loop finishes without break
 
     # Extract and Install
     try:
         subprocess.run(["tar", "--extract", "--gzip", "--file", archive], check=True, capture_output=True)
         subprocess.run(["sudo", "mv", "--target-directory", path, "stern"], check=True, capture_output=True)
-        subprocess.run(["sudo", "chmod", "--recursive", "+x", os.path.join(path, "stern")], check=True, capture_output=True)
+        subprocess.run(["sudo", "chmod", "--recursive", "+x", os.path.join(path, "stern")], check=True,
+                       capture_output=True)
         print(f"Stern v{version} installed successfully!")
-    except FileNotFoundError as e: sys.exit(f"Error: Command not found ({e}). Ensure tar/sudo/mv/chmod are installed.")
-    except subprocess.CalledProcessError as e: sys.exit(f"Install failed: {e.stderr.decode().strip()}")
+    except FileNotFoundError as e:
+        sys.exit(f"Error: Command not found ({e}). Ensure tar/sudo/mv/chmod are installed.")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Install failed: {e.stderr.decode().strip()}")
     finally:
         if os.path.exists(archive): os.remove(archive)
         if os.path.exists("stern"): os.remove("stern")
+
 
 @contextlib.contextmanager
 def gha_log_group(title: str) -> None:
@@ -187,12 +195,16 @@ def gha_log_group(title: str) -> None:
         print("::endgroup::", file=sys.stdout)
         sys.stdout.flush()
 
+
 def print_notebook_logs():
     """
     Collects logs from all notebooks in the current directory and prints them.
     """
     print("\nCollecting logs from notebooks:")
-    subprocess.run('''stern --selector "app in (notebook-controller, odh-notebook-controller)" -n redhat-ods-applications --no-follow --tail -1 --timestamps --color always | sort -k3''', shell=True, check=True)
+    subprocess.run(
+        '''stern --selector "app in (notebook-controller, odh-notebook-controller)" -n redhat-ods-applications --no-follow --tail -1 --timestamps --color always | sort -k3''',
+        shell=True, check=True)
+
 
 # Define a dataclass to hold the parsed arguments
 @dataclasses.dataclass()
