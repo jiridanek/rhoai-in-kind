@@ -21,6 +21,11 @@ metadata:
   name: odh-dashboard
   namespace: argocd
 spec:
+  syncPolicy:
+    syncOptions:
+      # 2025-06-10T21:15:29+00:00 ConfigMap redhat-ods-applications model-catalog-sources OutOfSync Missing
+      # ConfigMap "model-catalog-sources" is invalid: metadata.annotations: Too long: must have at most 262144 bytes
+      - ServerSideApply=true
   project: redhat-ods-applications
   destination:
     server: https://kubernetes.default.svc
@@ -121,7 +126,7 @@ spec:
   parentRefs:
     - name: gateway
       namespace: istio-system
-  hostnames: ["rhods-dashboard.127.0.0.1.sslip.io"]
+  hostnames: [ "rhods-dashboard.127.0.0.1.sslip.io" ]
   rules:
     - backendRefs:
         - name: rhods-dashboard
