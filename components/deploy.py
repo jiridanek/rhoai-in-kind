@@ -25,7 +25,7 @@ def main():
 
     if "CI" in os.environ:
         with gha_log_group("Install ArgoCD CLI"):
-            ARGOCD_VERSION = "v2.14.9"
+            ARGOCD_VERSION = "v3.0.6"
             sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-$(go env GOOS)-$(go env GOARCH)")
             sh(f"chmod +x /tmp/argocd-{ARGOCD_VERSION}")
             sh(f"sudo mv /tmp/argocd-{ARGOCD_VERSION} /usr/local/bin/argocd")
