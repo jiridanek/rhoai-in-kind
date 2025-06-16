@@ -9,6 +9,12 @@ jobs:
   rhoai-in-kind:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        workbench_branch:
+          - rhoai-2.22
+
     steps:
 
       - uses: actions/checkout@v4
@@ -54,7 +60,7 @@ jobs:
           kind load docker-image docker.io/istio/pilot:1.25.1
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py
+        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
         env:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 

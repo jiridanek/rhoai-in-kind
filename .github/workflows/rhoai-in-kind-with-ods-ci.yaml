@@ -12,6 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        workbench_branch:
+          - rhoai-2.22
+
         test_case:
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
@@ -99,7 +102,7 @@ jobs:
           config: components/00-kind-cluster.yaml
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py
+        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
         env:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 

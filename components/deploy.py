@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import contextlib
@@ -15,6 +16,16 @@ from typing import Callable
 
 def main():
     tf = TestFrame()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--workbench-branch",
+        default=os.environ.get("WORKBENCH_BRANCH"),
+        help="The workbench branch to use. Defaults to the WORKBENCH_BRANCH environment variable.",
+        required=not os.environ.get("WORKBENCH_BRANCH"),
+    )
+    args = parser.parse_args()
+    workbench_branch = args.workbench_branch
 
     # slow to deploy so do it first
     with gha_log_group("Install Kyverno"):
@@ -161,19 +172,21 @@ def main():
 
     with gha_log_group("Install Workbenches"):
         # error unmarshaling JSON: while decoding JSON: json: unknown field "apiGroup"
-        kustomize_version="5.0.3"
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            kustomize_tar=f"{tmp_dir}/kustomize-{kustomize_version}.tar.gz"
-            kustomize_bin=f"{tmp_dir}/kustomize-{kustomize_version}"
-            print("---------------------------------------------------------------------------------")
-            print(f"Download kustomize '{kustomize_version}'")
-            print("---------------------------------------------------------------------------------")
-            sh(f'wget --output-document="{kustomize_tar}" "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v{kustomize_version}/kustomize_v{kustomize_version}_$(go env GOOS)_$(go env GOARCH).tar.gz"')
-            sh(f'tar -C "{tmp_dir}" -xvf "{kustomize_tar}"')
-            sh(f'mv "{tmp_dir}/kustomize" "{kustomize_bin}"')
+        # kustomize_version="5.0.3"
+        # with tempfile.TemporaryDirectory() as tmp_dir:
+        #     kustomize_tar=f"{tmp_dir}/kustomize-{kustomize_version}.tar.gz"
+        #     kustomize_bin=f"{tmp_dir}/kustomize-{kustomize_version}"
+        #     print("---------------------------------------------------------------------------------")
+        #     print(f"Download kustomize '{kustomize_version}'")
+        #     print("---------------------------------------------------------------------------------")
+        #     sh(f'wget --output-document="{kustomize_tar}" "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v{kustomize_version}/kustomize_v{kustomize_version}_$(go env GOOS)_$(go env GOARCH).tar.gz"')
+        #     sh(f'tar -C "{tmp_dir}" -xvf "{kustomize_tar}"')
+        #     sh(f'mv "{tmp_dir}/kustomize" "{kustomize_bin}"')
+        #
+        #     sh(f'"{kustomize_bin}" version')
+        #     sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
+        sh(f"kubectl apply -k 'https://github.com/red-hat-data-services/notebooks//manifests/base/?timeout=90s&ref={workbench_branch}' --namespace redhat-ods-applications")
 
-            sh(f'"{kustomize_bin}" version')
-            sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
 
     with gha_log_group("Install Service CA Operator"):
         sh("kubectl label node --all node-role.kubernetes.io/master=")
