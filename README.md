@@ -66,10 +66,12 @@ podman machine set --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
 kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
 
-kubectl apply -k components/01-argocd
+python3 components/deploy.py --workbench-branch=rhoai-2.22
+```
 
-kubectl create namespace redhat-ods-applications
+what does it do? this, among other things
 
+```shell
 PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 export ARGOCD_OPTS='--insecure --port-forward --port-forward-namespace argocd'
 argocd login --core
