@@ -1,5 +1,15 @@
 Start KinD (Kubernetes in Docker) single-node cluster, install the ODH components that concern the IDE team, and run some tests.
 
+Specifically, the components deployed are:
+
+1. (ODH) Dashboard
+2. (ODH) Notebook Controller
+3. Datascience Pipelines Controller
+
+The conspicuously missing component is of course the ODH Platform Operator.
+
+The deployed Kubernetes manifests are taken directly from individual components' repositories, and the images in the cluster tend to be `:latest`-tagged builds from OpenShift CI.
+
 ## Prerequisites
 
 See .github/workflows/rhoai-in-kind.yaml
@@ -59,7 +69,7 @@ Therefore, what's missing from OpenShift and is required needs to be poly-filled
 
 ## Local usage
 
-Out-of-date, see .github/workflows/rhoai-in-kind.yaml
+Might get out-of-date, see .github/workflows/rhoai-in-kind.yaml for authoritative steps.
 
 ```shell
 podman machine set --rootful --memory $((16 * 1024)) --cpus 4
@@ -69,7 +79,7 @@ kind create cluster --config components/00-kind-cluster.yaml --image docker.io/k
 python3 components/deploy.py --workbench-branch=rhoai-2.22
 ```
 
-what does it do? this, among other things
+What does it do? This, among other things, in order to setup argocd access
 
 ```shell
 PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
