@@ -6,11 +6,11 @@ spec:
   displayName: "OpenShift Command Line Interface (oc)"
   description: "Download links for the OpenShift Command Line Interface (oc)."
   links:
+    # opendatahub-tests require the link to endWIth oc.tar or oc.zip
+    # https://github.com/opendatahub-io/opendatahub-tests/blob/04a254e2a40daaeff7958da73c2b2281a56b41bf/utilities/infra.py#L1177
     - text: "Download oc for Linux (amd64)"
-      href: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz"
+      # href: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz"
+      # href: 'https://downloads-openshift-console.apps.xxx/amd64/linux/oc.tar'
     - text: "Download oc for macOS (arm64)"
-      href: "https://mirror.openshift.com/pub/openshift-v4/arm64/clients/ocp/stable/openshift-client-mac.tar.gz"
-    # Adding a placeholder for windows just in case, though not explicitly requested for hardcoding
-    # but the function get_os_system() might return 'windows'
-    - text: "Download oc for Windows (amd64)"
-      href: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-windows.zip"
+      # href: "https://mirror.openshift.com/pub/openshift-v4/arm64/clients/ocp/stable/openshift-client-mac.tar.gz"
+      # href: 'https://downloads-openshift-console.apps.ide-222-pool-2kvsw.aws.rh-ods.com/ppc64le/linux/oc.tar'
