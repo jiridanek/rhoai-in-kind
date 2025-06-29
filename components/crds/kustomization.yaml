@@ -9,6 +9,7 @@ resources:
   - servicemonitor.yaml
   - consolelink.yaml
   - consoleclidownload.yaml
+  - oc-cli-downloads-instance.yaml
   - dsc.yaml
   - dsci.yaml
   - imagestream.yaml
