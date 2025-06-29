@@ -93,6 +93,9 @@ jobs:
           set -Eeuxo pipefail
           uv run pytest tests/workbenches
         working-directory: opendatahub-tests
+        env:
+          # https://github.com/jiridanek/rhoai-in-kind/issues/20
+          OC_BINARY_PATH: /usr/local/bin/oc
 
       - name: Collect logs
         run: ${PYTHON3} components/logs.py
