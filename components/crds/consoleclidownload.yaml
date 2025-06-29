@@ -1,0 +1,42 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: consoleclidownloads.console.openshift.io
+spec:
+  group: console.openshift.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              description: "ConsoleCLIDownloadSpec is the desired state of the ConsoleCLIDownload."
+              properties:
+                displayName:
+                  type: string
+                  description: "displayName is the display name of the CLI download."
+                description:
+                  type: string
+                  description: "description is the description of the CLI download."
+                links:
+                  type: array
+                  description: "links is a list of download links for the CLI."
+                  items:
+                    type: object
+                    properties:
+                      href:
+                        type: string
+                        description: "href is the URL for the download link."
+                      text:
+                        type: string
+                        description: "text is the display text for the download link."
+  scope: Cluster
+  names:
+    plural: consoleclidownloads
+    singular: consoleclidownload
+    kind: ConsoleCLIDownload
+    listKind: ConsoleCLIDownloadList

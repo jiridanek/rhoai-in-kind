@@ -8,6 +8,7 @@ resources:
   - route.yaml
   - servicemonitor.yaml
   - consolelink.yaml
+  - consoleclidownload.yaml
   - dsc.yaml
   - dsci.yaml
   - imagestream.yaml
