@@ -82,6 +82,8 @@ spec:
       managementState: Managed
     workbenches:
       managementState: Managed
+      # https://issues.redhat.com/browse/RHOAIENG-18420
+      workbenchNamespace: rhods-notebooks
     dashboard:
       managementState: Managed
     modelmeshserving:
@@ -94,7 +96,14 @@ spec:
       registriesNamespace: ""
       managementState: Removed
 status:
-  components: {}
+  components:
+    workbenches:
+      managementState: Managed
+      releases:
+        - name: Kubeflow Notebook Controller
+          repoUrl: 'https://github.com/kubeflow/kubeflow'
+          version: 1.10.0
+      workbenchNamespace: rhods-notebooks
   conditions:
     - lastHeartbeatTime: '2024-10-01T04:50:20Z'
       lastTransitionTime: '2024-09-30T15:30:24Z'
