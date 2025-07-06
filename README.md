@@ -35,7 +35,7 @@ Therefore, what's missing from OpenShift and is required needs to be poly-filled
 ### How to overcome these issues?
 
 1. Integrated image registry
-   Don't know yet, should not be too hard to fake the detection in notebook-controller
+   Our notebook-controller handles missing internal image registry; operating without internal image registry is an OpenShift AI feature.
 2. oauth-proxy
    On okd it's necessary to use unauthenticated image, it can be substituted with kustomize
 
