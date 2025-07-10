@@ -55,13 +55,13 @@ def main():
     # https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/#setup
     # https://ryandeangraham.medium.com/istio-gateway-api-nodeport-c598a21c4c95
     with gha_log_group("Install Istio"):
-        ISTIO_VERSION = "1.25.1"
+        ISTIO_VERSION = "1.26.2"
         TARGET_ARCH = sh("arch", capture_output=True).stdout.strip()
 
         # TLSRoute is considered "experimental"
         # https://github.com/kubernetes-sigs/gateway-api/issues/2643
         sh('kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
-          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.2.1" | kubectl apply -f -; }')
+          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.3.0" | kubectl apply -f -; }')
 
         sh("curl -L https://istio.io/downloadIstio | sh -", env={
             "ISTIO_VERSION": ISTIO_VERSION,
