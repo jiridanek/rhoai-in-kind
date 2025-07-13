@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import contextlib
+import re
 import sys
 import subprocess
 import textwrap
