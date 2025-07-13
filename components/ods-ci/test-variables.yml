@@ -15,16 +15,16 @@ OCP_ADMIN_USER:
 S3:
   AWS_ACCESS_KEY_ID: AWS_ACCESS_KEY_ID
   AWS_SECRET_ACCESS_KEY: AWS_SECRET_ACCESS_KEY
-  AWS_DEFAULT_ENDPOINT: https://s3.amazonaws.com/
+  AWS_DEFAULT_ENDPOINT: http://minio.apps.127.0.0.1.sslip.io
   AWS_DEFAULT_REGION: us-east-1
   BUCKET_1:
     NAME: ods-ci-s3
     REGION: us-east-1
-    ENDPOINT: https://s3.amazonaws.com/
+    ENDPOINT: http://minio.apps.127.0.0.1.sslip.io
   BUCKET_2:
     NAME: ods-ci-ds-pipelines
     REGION: us-east-1
-    ENDPOINT: https://s3.amazonaws.com/
+    ENDPOINT: http://minio.apps.127.0.0.1.sslip.io
   BUCKET_3:
     NAME: ods-ci-wisdom
     REGION: us-east-2

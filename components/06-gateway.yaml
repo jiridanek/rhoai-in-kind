@@ -63,6 +63,18 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-terminate
+      hostname: "*.apps.127.0.0.1.sslip.io"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: my-cluster-ca-secret
+            namespace: cert-manager
+      allowedRoutes:
+        namespaces:
+          from: All
 ---
 # opening codeserver from spawner ui will end up giving me (Access notebook server button)
 # http://jupyter-nb-admin-2duser-rhods-notebooks.127.0.0.1.sslip.io/codeserver/
@@ -81,6 +93,24 @@ spec:
         - type: RequestRedirect
           requestRedirect:
             scheme: https
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  # This resource MUST be in the same namespace as the Secret.
+  name: allow-istio-gateway-to-access-secret
+  namespace: cert-manager
+spec:
+  # Defines what resource is allowed to be referenced.
+  to:
+    - group: "" # Core API group for Secrets.
+      kind: Secret
+      name: my-cluster-ca-secret # Specifies the exact Secret name.
+  # Defines who is allowed to create the reference.
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system # The namespace of the Gateway.
 ---
 #apiVersion: gateway.networking.k8s.io/v1alpha3
 #kind: BackendTLSPolicy

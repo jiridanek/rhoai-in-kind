@@ -1,0 +1,58 @@
+# https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/dns/coredns/coredns.yaml.in#L55
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+
+        # for testing, we can use the following to force a DNS lookup to a specific IP
+        #rewrite name regex (.*)\.127\.0\.0\.1\.sslip\.io gateway-istio.istio-system.svc.cluster.local
+        #rewrite stop {
+        #   #name regex (.*)\.127\.0\.0\.1\.sslip\.io gateway-istio.istio-system.svc.cluster.local
+        #   #answer name gateway-istio\.istio-system\.svc\.cluster\.local pepa.127.0.0.1.sslip.io
+        #   #name suffix .127\.0\.0\.1\.sslip\.io gateway-istio.istio-system.svc.cluster.local
+        #   #answer name auto
+        #}
+        template IN A 127.0.0.1.sslip.io {
+           match (.*)\.127\.0\.0\.1\.sslip\.io
+           #answer "{{ .Name }} 60 IN A {{ lookup "gateway-istio.istio-system.svc.cluster.local" "A" }}"
+           answer "{{ .Name }} 60 IN CNAME gateway-istio.istio-system.svc.cluster.local"
+        }
+
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+
+# bash-5.2$ curl https://rhods-dashboard.127.0.0.1.sslip.io:443 --resolve rhods-dashboard.127.0.0.1.sslip.io:443:10.96.182.94 -k
+# │ oauth-proxy 2025/07/07 16:30:15 oauthproxy.go:172: Failed to initialize Reverse Proxy: certificate authority file (/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt) could not be read - open /var/run/secrets/kubernetes │
+# (app-root) wget https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox
+
+# │ oauth-proxy W0707 17:37:29.115892       1 reflector.go:533] github.com/openshift/oauth-proxy/providers/openshift/provider.go:354: failed to list *v1.ConfigMap: configmaps "oauth-serving-cert" is forbidden: User "system:serviceacc │
+# │ ount:jdanek:elyra" cannot list resource "configmaps" in API group "" in the namespace "openshift-config-managed"
+
+# ❯ oc create configmap odh-trusted-ca-bundle -n jdanek --from-literal=odh-ca-bundle.crt="" --from-literal=ca-bundle.crt="-----BEGIN CERTIFICATE-----\nMIGrMF+gAwIBAgIBATAFBgMrZXAwADAeFw0yNDExMTMyMzI3MzdaFw0yNTExMTMy\nMzI3MzdaMAAwKjAFBgMrZXADIQDEMMlJ1P0gyxEV7A8PgpNosvKZgE4ttDDpu/w9\n35BHzjAFBgMrZXADQQDHT8ulalOcI6P5lGpoRcwLzpa4S/5pyqtbqw2zuj7dIJPI\ndNb1AkbARd82zc9bF+7yDkCNmLIHSlDORUYgTNEL\n-----END CERTIFICATE-----"
+# ❯ oc create configmap odh-trusted-ca-bundle -n jdanek --from-literal=ca-bundle.crt='' --from-literal=odh-ca-bundle.crt=''
+
+# https://ds-pipeline-dspa.jdanek.svc:8443/557a4bc9-75f6-4e50-b8ef-7c5216d50470/runs/70b4bfd3-fc2a-476d-8936-a939034cdb49
+# http://minio.127.0.0.1.sslip.io:9090/
