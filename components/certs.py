@@ -77,7 +77,7 @@ def ca_issuer():
     sh("kubectl wait --for=condition=Ready certificate/sslip-io-certificate --timeout=20s")
 
 def main():
-    pass
+    ca_issuer()
 
 def sh(cmd: str, check=True, stdout: bool = False, stderr: bool = False) -> str | None:
     print(f"$ {cmd}")
