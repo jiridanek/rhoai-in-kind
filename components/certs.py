@@ -38,8 +38,8 @@ def ca_issuer():
             secretName: my-cluster-ca-secret
         '''
     )
-    pathlib.Path("my-cluster-ca-secret.yaml").write_text(request)
-    sh("kubectl apply -f my-cluster-ca-secret.yaml")
+    pathlib.Path("my-cluster-ca-issuer.yaml").write_text(request)
+    sh("kubectl apply -f my-cluster-ca-issuer.yaml")
 
     sh("openssl req -x509 -new -nodes -keyout ca.key -sha256 -days 3650 -out ca.crt -subj '/CN=My Cluster CA' -addext 'subjectAltName = DNS:*.127.0.0.1.sslip.io'")
     sh("kubectl create secret tls my-cluster-ca-secret --cert=ca.crt --key=ca.key --namespace=cert-manager --dry-run=client -o yaml | kubectl apply -f -")
