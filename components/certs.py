@@ -74,7 +74,7 @@ def ca_issuer():
     )
     pathlib.Path("sslip-certificate.yaml").write_text(request)
     sh("kubectl apply -f sslip-certificate.yaml")
-    sh("kubectl wait --for=condition=Ready certificate/sslip-io-certificate --timeout=20s")
+    sh("kubectl wait --for=condition=Ready certificate/sslip-io-certificate -n cert-manager --timeout=20s")
 
 def main():
     ca_issuer()
