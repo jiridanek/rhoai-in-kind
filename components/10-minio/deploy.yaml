@@ -84,12 +84,23 @@ spec:
         app.kubernetes.io/part-of: minio
         component: minio
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - args:
             - minio server /data --console-address :9090
           command:
             - /bin/bash
             - -c
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - secretRef:
                 name: minio-root-user
