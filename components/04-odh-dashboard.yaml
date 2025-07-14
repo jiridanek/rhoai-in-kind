@@ -31,9 +31,9 @@ spec:
     server: https://kubernetes.default.svc
     namespace: redhat-ods-applications
   source:
-    repoURL: https://github.com/opendatahub-io/odh-dashboard.git
+    repoURL: https://github.com/jiridanek/odh-dashboard.git
     path: manifests/rhoai/onprem
-    targetRevision: HEAD
+    targetRevision: patch-2
     kustomize:
       patches:
         # https://github.com/opendatahub-io/odh-dashboard/pull/4099
