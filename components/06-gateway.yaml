@@ -70,7 +70,7 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: my-cluster-ca-secret
+          - name: sslip-tls-secret
             namespace: cert-manager
       allowedRoutes:
         namespaces:
@@ -105,7 +105,7 @@ spec:
   to:
     - group: "" # Core API group for Secrets.
       kind: Secret
-      name: my-cluster-ca-secret # Specifies the exact Secret name.
+      name: sslip-tls-secret # Specifies the exact Secret name.
   # Defines who is allowed to create the reference.
   from:
     - group: gateway.networking.k8s.io

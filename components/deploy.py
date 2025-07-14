@@ -6,10 +6,8 @@ import argparse
 import json
 import os
 import contextlib
-import re
 import sys
 import subprocess
-import tempfile
 import textwrap
 import time
 from typing import Callable, Any
@@ -197,7 +195,7 @@ def main():
             # MINIO_ROOT_PASSWORD=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_PASSWORD}}'", stdout=subprocess.PIPE).stdout.strip()
             MINIO_ROOT_PASSWORD="AWS_SECRET_ACCESS_KEY"
             # MINIO_HOST="https://" + sh("oc get -n minio route minio-s3 -o template --template '{{.spec.host}}'", stdout=subprocess.PIPE).stdout.strip()
-            MINIO_HOST="http://minio.127.0.0.1.sslip.io"
+            MINIO_HOST="https://minio.apps.127.0.0.1.sslip.io"
 
             s3 = boto3.client("s3",
                               endpoint_url=MINIO_HOST,
@@ -287,7 +285,9 @@ def main():
         tf.defer(None, lambda _: sh('''timeout 60s bash -c 'while ! curl -k "https://rhods-dashboard.127.0.0.1.sslip.io/"; do sleep 2; done' '''))
 
     with gha_log_group("Set fake DSC and DSCI"):
-        sh("kubectl apply -f components/07-dsc-dsci.yaml")
+        sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side")
+        # need status for dashboard resource otherwise notebook controller will not fill dashboard link for dspa secret
+        sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side --subresource=status || true")
 
     with gha_log_group("Install local-path provisioner"):
         sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml")

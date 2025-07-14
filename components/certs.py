@@ -25,6 +25,17 @@ def self_signed_issuer():
     sh("kubectl apply -f self-signed-issuer.yaml")
 
 def ca_issuer():
+    """
+    Verify:
+    ❯ openssl s_client -showcerts -connect minio-console.apps.127.0.0.1.sslip.io:443 </dev/null | sed -n '/-----BEGIN/,/-----END/p' > server.crt
+    ❯ openssl verify -CAfile /Users/jdanek/IdeaProjects/rhoai-in-kind/ca.crt server.crt
+    """
+    sh("kubectl delete configmap odh-trusted-ca-bundle --namespace=cert-manager --ignore-not-found")
+    sh("kubectl delete secret my-cluster-ca-secret --namespace=cert-manager --ignore-not-found")
+    sh("kubectl delete issuer my-cluster-ca-issuer --namespace=cert-manager --ignore-not-found")
+    sh("kubectl delete certificate sslip-io-certificate --namespace=cert-manager --ignore-not-found")
+    sh("kubectl delete secret sslip-tls-secret --namespace=cert-manager --ignore-not-found")
+
     # language=YAML
     request = textwrap.dedent(
         '''
@@ -42,7 +53,8 @@ def ca_issuer():
     # Error from server (InternalError): error when creating "my-cluster-ca-issuer.yaml": Internal error occurred: failed calling webhook "webhook.cert-manager.io": failed to call webhook: Post "https://cert-manager-webhook.cert-manager.svc:443/validate?timeout=30s": dial tcp 10.96.78.75:443: connect: connection refused
     sh("timeout 30s bash -c 'while ! kubectl apply -f my-cluster-ca-issuer.yaml; do sleep 1; done'")
 
-    sh("openssl req -x509 -new -nodes -keyout ca.key -sha256 -days 3650 -out ca.crt -subj '/CN=My Cluster CA' -addext 'subjectAltName = DNS:*.127.0.0.1.sslip.io'")
+    # todo: remove dns name from cacert?
+    sh("openssl req -x509 -new -nodes -keyout ca.key -sha256 -days 3650 -out ca.crt -subj '/CN=My Cluster CA' -addext 'subjectAltName = DNS:*.apps.127.0.0.1.sslip.io'")
     sh("kubectl create secret tls my-cluster-ca-secret --cert=ca.crt --key=ca.key --namespace=cert-manager --dry-run=client -o yaml | kubectl apply -f -")
 
     sh(f"kubectl create configmap odh-trusted-ca-bundle --namespace=cert-manager --from-file=odh-ca-bundle.crt=ca.crt --from-file=ca-bundle.crt={find_ca_bundle_path()} --dry-run=client -o yaml | kubectl apply -f -")
