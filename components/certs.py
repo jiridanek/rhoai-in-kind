@@ -116,29 +116,29 @@ def find_ca_bundle_path() -> str | None:
 
     # --- For macOS ---
     elif system == "Darwin":
-        sh("security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain > macos-native-ca-bundle.pem")
-        return pathlib.Path("macos-native-ca-bundle.pem").resolve().absolute().as_posix()
+        # Try system keychain first
+        system_bundle = pathlib.Path("macos-native-ca-bundle.pem").resolve().absolute().as_posix()
+        sh(
+            "security find-certificate -a -p "
+            "/System/Library/Keychains/SystemRootCertificates.keychain "
+            "> macos-native-ca-bundle.pem"
+        )
+        if os.path.isfile(system_bundle):
+            return system_bundle
 
-        # On macOS, command-line tools often rely on Homebrew's OpenSSL
+        # Fallback to Homebrew OpenSSL if available
         try:
-            # Run `brew --prefix openssl` to get the installation directory
             result = subprocess.run(
                 ["brew", "--prefix", "openssl"],
                 capture_output=True,
                 text=True,
                 check=True
             )
-        except subprocess.CalledProcessError:
-            raise
-
-        try:
-            # Construct the full path to the certificate bundle
             brew_path = os.path.join(result.stdout.strip(), "etc/openssl/cert.pem")
             if os.path.isfile(brew_path):
                 return brew_path
-        except FileNotFoundError:
-            raise
-
+        except subprocess.CalledProcessError:
+            pass
     # If no path was found, return None
     return None
 
