@@ -8,10 +8,11 @@ import os
 import contextlib
 import sys
 import subprocess
-import tempfile
 import textwrap
 import time
-from typing import Callable
+from typing import Callable, Any
+
+import certs
 
 
 def main():
@@ -33,6 +34,15 @@ def main():
         sh("timeout 30s bash -c 'while ! kubectl apply --server-side -k components/02-kyverno; do sleep 1; done'")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=kyverno -n kyverno --timeout=120s"))
+
+    with gha_log_group("Install cert-manager"):
+        version = "v1.18.2"
+        cert_manager_yaml = f"https://github.com/jetstack/cert-manager/releases/download/{version}/cert-manager.yaml"
+        sh(f"kubectl apply -f {cert_manager_yaml}")
+        sh("kubectl wait deployment.apps --for condition=Available --selector app.kubernetes.io/instance=cert-manager --all-namespaces --timeout 5m")
+
+    with gha_log_group("Generate certs"):
+        certs.ca_issuer()
 
     if "CI" in os.environ:
         with gha_log_group("Install ArgoCD CLI"):
@@ -77,6 +87,9 @@ def main():
 
     with gha_log_group("Setup Gateway"):
         sh("kubectl apply -f components/06-gateway.yaml")
+
+    with gha_log_group("Configure DNS"):
+        sh("kubectl apply -f components/11-coredns.yaml")
 
     with gha_log_group("Install ArgoCD"):
         sh("kubectl apply -k components/01-argocd")
@@ -140,12 +153,65 @@ def main():
     with gha_log_group("Install Kyverno policies"):
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
+        sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/pipelines-routes-policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/imagestream-status-policy.yaml; do sleep 1; done'")
         tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
 
     with gha_log_group("Run deferred functions"):
         with tf:
             pass
+
+    with gha_log_group("Install Minio"):
+        sh("kubectl get namespace minio || kubectl create namespace minio")
+        secret = textwrap.dedent("""
+        apiVersion: v1
+        kind: Secret
+        metadata:
+            name: minio-root-user
+        type: Opaque
+        stringData:
+            MINIO_ROOT_USER: AWS_ACCESS_KEY_ID
+            MINIO_ROOT_PASSWORD: AWS_SECRET_ACCESS_KEY
+        """)
+        sh("kubectl apply --namespace=minio -f -", input=secret)
+        sh("kubectl apply --namespace=minio -f components/10-minio/deploy.yaml")
+
+        tf.defer(None, lambda _: sh("kubectl wait --for=condition=Available deployment -l app=minio -n minio --timeout=120s"))
+        # tf.defer(None, lambda _: sh(
+        #     "timeout 120s bash -c 'while ! kubectl get --namespace=minio secret/aws-connection-my-storage; do sleep 1; done'"))
+        # tf.defer(None, lambda _: sh(
+        #     "timeout 120s bash -c 'while ! kubectl get --namespace=minio secret/aws-connection-pipeline-artifacts; do sleep 1; done'"))
+        def create_buckets(_):
+            try:
+                import boto3
+            except ImportError:
+                python = sys.executable
+                # python = "/opt/homebrew/bin/python3"
+                sh(f"{python} -m pip install boto3")
+                import boto3
+
+            # MINIO_ROOT_USER=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_USER}}'", stdout=subprocess.PIPE).stdout.strip()
+            MINIO_ROOT_USER="AWS_ACCESS_KEY_ID"
+            # MINIO_ROOT_PASSWORD=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_PASSWORD}}'", stdout=subprocess.PIPE).stdout.strip()
+            MINIO_ROOT_PASSWORD="AWS_SECRET_ACCESS_KEY"
+            # MINIO_HOST="https://" + sh("oc get -n minio route minio-s3 -o template --template '{{.spec.host}}'", stdout=subprocess.PIPE).stdout.strip()
+            MINIO_HOST="https://minio.apps.127.0.0.1.sslip.io"
+
+            s3 = boto3.client("s3",
+                              endpoint_url=MINIO_HOST,
+                              aws_access_key_id=MINIO_ROOT_USER,
+                              aws_secret_access_key=MINIO_ROOT_PASSWORD,
+                              verify=False)
+            bucket = 'ods-ci-ds-pipelines'
+            print('creating ods-ci-ds-pipelines bucket')
+            if bucket not in [bu["Name"] for bu in s3.list_buckets()["Buckets"]]:
+                s3.create_bucket(Bucket=bucket)
+            bucket = 'ods-ci-s3'
+            print('creating ods-ci-s3 bucket')
+            if bucket not in [bu["Name"] for bu in s3.list_buckets()["Buckets"]]:
+                s3.create_bucket(Bucket=bucket)
+
+        tf.defer(None, create_buckets)
 
     with gha_log_group("Login to ArgoCD"):
         sh("kubectl config set-context --current --namespace=argocd")
@@ -155,6 +221,9 @@ def main():
 
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
+        # dspa is looking up configmaps in this namespace
+        #sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
+
         sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
 
         # wait for argocd to sync the application
@@ -204,7 +273,8 @@ def main():
             "contributor-username", "adminuser",
         ]:
             sh(f"kubectl create serviceaccount -n oauth-server {username} --dry-run=client -o yaml | kubectl apply -f -")
-            sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --serviceaccount=oauth-server:{username} --dry-run=client -o yaml | kubectl apply -f -")
+            # the full SA name is something like `system:serviceaccount:oauth-server:ldap-user2`
+            sh(f"kubectl create clusterrolebinding -n oauth-server {username} --clusterrole cluster-admin --user={username} --serviceaccount=oauth-server:{username} --dry-run=client -o yaml | kubectl apply -f -")
 
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
@@ -215,7 +285,9 @@ def main():
         tf.defer(None, lambda _: sh('''timeout 60s bash -c 'while ! curl -k "https://rhods-dashboard.127.0.0.1.sslip.io/"; do sleep 2; done' '''))
 
     with gha_log_group("Set fake DSC and DSCI"):
-        sh("kubectl apply -f components/07-dsc-dsci.yaml")
+        sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side")
+        # need status for dashboard resource otherwise notebook controller will not fill dashboard link for dspa secret
+        sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side --subresource=status || true")
 
     with gha_log_group("Install local-path provisioner"):
         sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml")
@@ -317,7 +389,7 @@ class TestFrame:
     def __init__(self):
         self.stack = []
 
-    def defer[T](self, obj: T, fn: Callable[[T], None]):
+    def defer[T](self, obj: T, fn: Callable[[T], Any]):
         self.stack.append((obj, fn))
 
     def __enter__(self):

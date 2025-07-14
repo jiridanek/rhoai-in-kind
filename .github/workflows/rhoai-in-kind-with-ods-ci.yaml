@@ -44,7 +44,7 @@ jobs:
           #- "tests/Tests/0500__ide/0507__culler/culler.robot"
 
           # oc new-project "elyra-test-6893" --display-name="elyra-test-6893" --description="testing Elyra pipeline functionality" --as=ldap-user2 --as-group=system:authenticated --as-group=system:authenticated:oauth 2>&1
-          #- "tests/Tests/0500__ide/0502__ide_elyra.robot"
+          - "tests/Tests/0500__ide/0502__ide_elyra.robot"
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
@@ -100,6 +100,33 @@ jobs:
           node_image: "docker.io/kindest/node:v1.31.6"
           cluster_name: kind
           config: components/00-kind-cluster.yaml
+
+      # https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-kubectl-binary-with-curl-on-linux
+      - name: Install kubectl
+        run: |
+          set -Eeuxo pipefail
+          KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
+          # Download the kubectl binary
+          curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          
+          # Download the checksum file
+          curl -LO "https://dl.k8s.io/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+          
+          # Verify the kubectl binary against the checksum
+          echo "$(cat kubectl.sha256) kubectl" | sha256sum --check
+          if [ $? -ne 0 ]; then
+            echo "Checksum validation failed!"
+            exit 1
+          fi
+          
+          # Make the kubectl binary executable
+          chmod +x ./kubectl
+          
+          # Move the kubectl binary to a directory in the system's PATH
+          sudo mv ./kubectl "$(which kubectl)"
+
+      - name: Verify kubectl version
+        run: kubectl version --client
 
       - name: Deploy stuff into Kubernetes
         run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}

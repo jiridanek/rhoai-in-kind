@@ -199,3 +199,34 @@ status:
   release:
     name: OpenShift AI Self-Managed
     version: 2.13.0
+---
+apiVersion: components.platform.opendatahub.io/v1alpha1
+kind: Dashboard
+metadata:
+  annotations:
+    component.opendatahub.io/management-state: Managed
+    platform.opendatahub.io/instance.generation: '1'
+    platform.opendatahub.io/instance.name: default-dsc
+    platform.opendatahub.io/instance.uid: 9e08e328-fcd5-4352-9e4f-fcf908d4315d
+    platform.opendatahub.io/type: OpenShift AI Self-Managed
+    platform.opendatahub.io/version: 2.22.0
+  name: default-dashboard
+  labels:
+    platform.opendatahub.io/part-of: datasciencecluster
+spec: {}
+status:
+  conditions:
+    - lastTransitionTime: '2025-07-14T09:15:38Z'
+      status: 'True'
+      type: Ready
+    - lastTransitionTime: '2025-07-14T09:15:38Z'
+      observedGeneration: 1
+      status: 'True'
+      type: ProvisioningSucceeded
+    - lastTransitionTime: '2025-07-14T09:15:38Z'
+      observedGeneration: 1
+      status: 'True'
+      type: DeploymentsAvailable
+  observedGeneration: 1
+  phase: Ready
+  url: rhods-dashboard.127.0.0.1.sslip.io

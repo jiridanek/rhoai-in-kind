@@ -13,6 +13,7 @@ resources:
   - imagestream.yaml
   - buildconfig.yaml
   - clusterserviceversion.yaml
+  - components.platform.opendatahub.io_dashboards.yaml
 #  - servingruntime.yaml
 #  - inferenceservice.yaml
 #  - auth.yaml

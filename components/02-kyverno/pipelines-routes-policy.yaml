@@ -1,0 +1,227 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno-route-tlsroute-manager
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - gateways
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - tlsroutes
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - networking.istio.io
+    resources:
+      - destinationrules
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - httproutes
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - route.openshift.io
+    resources:
+      - routes
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kyverno-bind-route-tlsroute-manager-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kyverno-route-tlsroute-manager
+subjects:
+  - kind: ServiceAccount
+    name: kyverno-admission-controller
+    namespace: kyverno
+  - kind: ServiceAccount
+    name: kyverno-background-controller
+    namespace: kyverno
+  - kind: ServiceAccount
+    name: kyverno-reports-controller
+    namespace: kyverno
+---
+apiVersion: kyverno.io/v2beta1
+kind: ClusterPolicy
+metadata:
+  name: manage-pipelines-gateway-routes
+  annotations:
+    policies.kyverno.io/title: Manage TLSRoute and Route Hostname for Notebooks
+    policies.kyverno.io/category: Gateway API, OpenShiftAI
+    policies.kyverno.io/subject: Route, TLSRoute
+    policies.kyverno.io/description: >-
+      When an OpenShift Route for a OpenShiftAI Notebook is created with an empty host,
+      this policy generates a corresponding TLSRoute attaching to a predefined Gateway
+      and updates the original Route's spec.host field using a predictable hostname format
+      (<notebook-name>-<namespace>.127.0.0.1.sslip.io). Requires the Gateway API CRDs
+      and a target Gateway to exist.
+spec:
+  validationFailureAction: Audit # Use 'Enforce' in production if confident
+  background: false
+  rules:
+    - name: generate-backendtls-for-service
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              # The user-created namespaces/data science projects may not have any deterministic label at all
+              #namespaceSelector:
+              #  matchLabels:
+              #    kubernetes.io/metadata.name: rhods-notebooks
+      preconditions:
+        all:
+          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
+            operator: GreaterThan
+            value: 0
+          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
+            operator: NotEquals
+            value: ""
+      generate:
+        synchronize: true
+        # Two options here
+        # * BackendTLSPolicy and provide correct cert
+        # * DestinationRule (istio specific) and disable TLS validation
+
+        # DestinationRule option
+        apiVersion: networking.istio.io/v1beta1
+        kind: DestinationRule
+        name: "{{ request.object.metadata.name }}"
+        namespace: "{{ request.object.metadata.namespace }}"
+        data:
+          spec:
+            host: "{{ request.object.metadata.name }}.{{ request.object.metadata.namespace }}.svc.cluster.local"
+            trafficPolicy:
+              tls:
+                mode: SIMPLE
+                insecureSkipVerify: true
+        # BackendTLSPolicy option
+        #apiVersion: gateway.networking.k8s.io/v1alpha3  # TODO(jdanek): adjust if using v1beta1 or v1
+        #kind: BackendTLSPolicy
+        #name: "{{ request.object.metadata.name }}"
+        #namespace: "{{ request.object.metadata.namespace }}"
+        #synchronize: true
+        #data:
+        #  metadata:
+        #    ownerReferences: "{{ request.object.metadata.ownerReferences }}"
+        #  spec:
+        #    targetRefs:
+        #      - group: ""
+        #        kind: Service
+        #        name: "{{ request.object.metadata.name }}"
+        #    # TLS settings for the connection from the Gateway to the backend
+        #    validation:
+        #      # This is the list of CAs the Gateway will trust
+        #      caCertificateRefs:
+        #        - group: ""
+        #          kind: ConfigMap
+        #          name: openshift-service-ca.crt-noservice
+        #      # This hostname is used for SNI and must match the CN in the backend certificate
+        #      hostname: "{{ request.object.metadata.name }}.{{ request.object.metadata.namespace }}.svc.cluster.local"
+    - name: generate-tlsroute-for-notebook
+      match:
+        any:
+          - resources:
+              kinds:
+                - route.openshift.io/v1/Route
+              # The user-created namespaces/data science projects may not have any deterministic label at all
+              #namespaceSelector:
+              #  matchLabels:
+              #    kubernetes.io/metadata.name: rhods-notebooks
+      preconditions:
+        all:
+          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
+            operator: GreaterThan
+            value: 0
+          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
+            operator: NotEquals
+            value: ""
+      generate:
+        apiVersion: gateway.networking.k8s.io/v1  # TODO(jdanek): adjust if using v1beta1 or v1
+        kind: HTTPRoute
+        name: "{{ request.object.metadata.name }}"
+        namespace: "{{ request.object.metadata.namespace }}"
+        synchronize: true
+        data:
+          metadata:
+            ownerReferences: "{{ request.object.metadata.ownerReferences }}"
+          spec:
+            parentRefs:
+              - name: "gateway"
+                namespace: "istio-system"
+                sectionName: "https-terminate"
+            hostnames:
+              # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
+              # https://github.com/kyverno/kyverno/issues/4206
+              - "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.apps.127.0.0.1.sslip.io"
+            rules:
+              - backendRefs:
+                  - name: "{{ request.object.spec.to.name }}"
+                    kind: Service
+                    port: 8443  # routes and tlsroutes may differ whether named ports are allowed
+
+    - name: update-route-host-for-pipeline
+      match: # Use the same match conditions as the generate rule!
+        any:
+          - resources:
+              kinds:
+                - route.openshift.io/v1/Route
+              #namespaceSelector:
+              #  matchLabels:
+              #    kubernetes.io/metadata.name: rhods-notebooks
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.host || '' }}"
+            operator: Equals
+            value: ""
+          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
+            operator: GreaterThan
+            value: 0
+          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
+            operator: NotEquals
+            value: ""
+      mutate:
+        patchStrategicMerge:
+          spec:
+            # *** USE THE SAME PREDICTABLE HOSTNAME PATTERN AS THE GENERATED TLSROUTE ***
+            #host: "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.127.0.0.1.sslip.io"
+            # actually, need this reachable from cluster, so 127.0.0.1 won't work
+            host: "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.apps.127.0.0.1.sslip.io"

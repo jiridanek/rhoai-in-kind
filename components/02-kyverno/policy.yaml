@@ -1,4 +1,37 @@
 ---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: sync-ca-configmap
+  annotations:
+    policies.kyverno.io/title: Synchronize CA ConfigMap to all Namespaces
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/subject: ConfigMap
+    policies.kyverno.io/description: >-
+      This policy creates a copy of a central CA ConfigMap in all existing
+      and new namespaces. This ensures that all workloads can easily mount
+      and trust a common cluster-wide CA.
+spec:
+  rules:
+    - name: generate-ca-configmap-in-all-ns
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      generate:
+        # Use synchronize to add the resource to existing namespaces and keep it in sync.
+        synchronize: true
+        apiVersion: v1
+        kind: ConfigMap
+        name: odh-trusted-ca-bundle
+        # Use a variable to place the ConfigMap in the triggering namespace.
+        namespace: "{{request.object.metadata.name}}"
+        # Clone the data from a source ConfigMap.
+        clone:
+          namespace: cert-manager
+          name: odh-trusted-ca-bundle
+---
 # We need to add openshift-service-ca.crt configmap to every namespace,
 # the way it would happen on OpenShift. Otherwise DSPA does not reconcile.
 
