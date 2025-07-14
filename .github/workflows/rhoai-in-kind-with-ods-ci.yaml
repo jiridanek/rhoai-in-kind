@@ -44,7 +44,7 @@ jobs:
           #- "tests/Tests/0500__ide/0507__culler/culler.robot"
 
           # oc new-project "elyra-test-6893" --display-name="elyra-test-6893" --description="testing Elyra pipeline functionality" --as=ldap-user2 --as-group=system:authenticated --as-group=system:authenticated:oauth 2>&1
-          #- "tests/Tests/0500__ide/0502__ide_elyra.robot"
+          - "tests/Tests/0500__ide/0502__ide_elyra.robot"
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
           - "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
