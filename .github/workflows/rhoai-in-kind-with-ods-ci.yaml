@@ -67,8 +67,8 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: red-hat-data-services/ods-ci
-          ref: master
+          repository: jiridanek/ods-ci
+          ref: rename_images
           path: ods-ci
 
       # Otherwise we may end up with a random Python version?
