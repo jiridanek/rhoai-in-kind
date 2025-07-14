@@ -83,8 +83,9 @@ def main():
 def sh(cmd: str, check=True, stdout: bool = False, stderr: bool = False) -> str | None:
     print(f"$ {cmd}")
     p = subprocess.run(
-        cmd,
+        f"set -Eeuo pipefail; {cmd}",
         shell=True,
+        executable="/bin/bash",
         stdout=subprocess.PIPE if stdout else None,
         stderr=subprocess.PIPE if stderr else None
     )
