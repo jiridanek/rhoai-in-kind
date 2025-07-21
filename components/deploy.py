@@ -255,6 +255,7 @@ def main():
         #     sh(f'"{kustomize_bin}" version')
         #     sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
         sh(f"kubectl apply -k 'https://github.com/red-hat-data-services/notebooks//manifests/base/?timeout=90s&ref={workbench_branch}' --namespace redhat-ods-applications")
+        sh(f"kubectl apply -k 'https://github.com/red-hat-data-services/notebooks//manifests/overlays/additional/?timeout=90s&ref={workbench_branch}' --namespace redhat-ods-applications")
 
 
     with gha_log_group("Install Service CA Operator"):
