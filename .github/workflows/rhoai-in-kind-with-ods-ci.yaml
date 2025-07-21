@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: jiridanek/ods-ci
-          ref: rename_images
+          ref: rename_images_py312
           path: ods-ci
 
       # Otherwise we may end up with a random Python version?
