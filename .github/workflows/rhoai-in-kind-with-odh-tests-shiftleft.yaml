@@ -31,6 +31,16 @@ jobs:
         id: setup-python
         with:
           python-version: '3.13'
+    
+      # https://github.com/jiridanek/rhoai-in-kind/issues/10
+      # ERROR: very rarely, we end up with a full disk in mnt directory
+      - name: Free disk space and swapoff
+        run: |
+          df -h
+          sudo du -sh /mnt/*
+          sudo swapoff -a
+          sudo rm -rf /mnt/*
+          df -h
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
