@@ -87,7 +87,7 @@ jobs:
           sudo swapoff -a
           sudo rm -rf /mnt/*
           df -h
-          
+
       # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
       - name: Relocate docker data dir
         run: |
