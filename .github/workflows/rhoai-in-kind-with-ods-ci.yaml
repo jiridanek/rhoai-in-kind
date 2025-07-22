@@ -78,6 +78,16 @@ jobs:
         with:
           python-version: '3.13'
 
+      # https://github.com/jiridanek/rhoai-in-kind/issues/10
+      # ERROR: very rarely, we end up with a full disk in mnt directory
+      - name: Free disk space and swapoff
+        run: |
+          df -h
+          sudo du -sh /mnt/*
+          sudo swapoff -a
+          sudo rm -rf /mnt/*
+          df -h
+
       # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
       - name: Relocate docker data dir
         run: |
