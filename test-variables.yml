@@ -1,5 +1,6 @@
 # https://github.com/opendatahub-io/odh-dashboard/blob/main/frontend/src/__tests__/cypress/test-variables.yml.example
 ODH_DASHBOARD_URL: "https://rhods-dashboard.127.0.0.1.sslip.io"
+APPLICATIONS_NAMESPACE: redhat-ods-applications
 TEST_USER:
   AUTH_TYPE: foo-auth
   USERNAME: foo-user
