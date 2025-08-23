@@ -110,6 +110,7 @@ jobs:
       - name: Use Node.js with npm caching
         uses: actions/setup-node@v4
         with:
+          node-version: '20.x'
           cache: 'npm'
           # https://github.com/opendatahub-io/odh-dashboard/pull/3799
           cache-dependency-path: 'odh-dashboard/package-lock.json'
@@ -134,7 +135,7 @@ jobs:
           # npm error command sh -c husky
           npm install -g husky
 
-          npm install
+          npm --prefix frontend ci --prefer-offline --no-audit
         working-directory: odh-dashboard/frontend
 
       - name: Run cypress
