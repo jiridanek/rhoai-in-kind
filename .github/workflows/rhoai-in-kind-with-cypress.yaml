@@ -123,6 +123,17 @@ jobs:
           #sudo apt-get install -y xterm ncurses-bin
 
           # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
+
+          # > odh-dashboard@2.0.0 prepare
+          # > husky
+          #
+          # sh: 1: husky: not found
+          # npm error code 127
+          # npm error path /home/runner/work/rhoai-in-kind/rhoai-in-kind/odh-dashboard
+          # npm error command failed
+          # npm error command sh -c husky
+          npm install -g husky
+
           npm install
         working-directory: odh-dashboard/frontend
 
