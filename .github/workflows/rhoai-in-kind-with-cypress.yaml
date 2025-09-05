@@ -36,8 +36,8 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: opendatahub-io/odh-dashboard
-          ref: main
+          repository: jiridanek/odh-dashboard
+          ref: jd_data_testid
           path: odh-dashboard
           sparse-checkout: |
             frontend/
