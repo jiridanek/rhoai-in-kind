@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: opendatahub-io/opendatahub-tests
-          ref: main
+          ref: 94670b336c632ac2c0022b347444b687d9384327  # Sept 17, 2025 - last known working
           path: opendatahub-tests
 
       # Otherwise we may end up with a random Python version?
