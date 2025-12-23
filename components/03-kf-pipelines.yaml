@@ -28,7 +28,9 @@ spec:
   source:
     repoURL: https://github.com/opendatahub-io/data-science-pipelines-operator.git
     path: config/overlays/rhoai
-    targetRevision: HEAD
+    # can't use stable-2.x because there images aren't pinned, use :latest
+    #  https://github.com/opendatahub-io/data-science-pipelines-operator/blob/stable-2.x/config/base/params.env
+    targetRevision: v2.18.0
     kustomize:
       patches:
         - target:
@@ -46,6 +48,7 @@ spec:
             kind: Deployment
             name: data-science-pipelines-operator-controller-manager
           # value: quay.io/openshift/origin-oauth-proxy@sha256:1ece77d14a685ef2397c3a327844eea45ded00c95471e9e333e35ef3860b1895
+          # https://redhat-internal.slack.com/archives/C07K6N96FS4/p1759953469571239
           patch: |-
             apiVersion: apps/v1
             kind: Deployment
@@ -74,3 +77,6 @@ spec:
 #              value:
 #                name: IMAGES_APISERVER
 #                value: ...
+
+# I need to override https://github.com/opendatahub-io/data-science-pipelines-operator/blob/stable-2.x/config/base/params.env
+#  values because they use :latest, which is now 3.x stuff

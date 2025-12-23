@@ -33,7 +33,10 @@ spec:
   source:
     repoURL: https://github.com/opendatahub-io/odh-dashboard.git
     path: manifests/rhoai/onprem
-    targetRevision: HEAD
+    # same problem as pipelines, stable-2.x references main
+    # and v2.37.1-odh seems the last without bring-your-own-id-connect
+    # https://github.com/opendatahub-io/odh-dashboard/releases/tag/v2.37.1-odh
+    targetRevision: v2.37.1-odh
     kustomize:
       patches:
         # https://github.com/opendatahub-io/odh-dashboard/pull/4099
@@ -49,6 +52,17 @@ spec:
         #      - rolebindings
         #      verbs:
         #      - create
+
+        # dashboard manifests use the deprecated var kustomize feature, so we patch the configmap where params.env is stored
+        #  approach would be the same with the current replacements feature
+        # https://github.com/opendatahub-io/odh-dashboard/blob/0da3abf2c5256bd5c0ed8e69d3c0da5a563f8caa/manifests/rhoai/onprem/kustomization.yaml#L9C1-L13C30
+        - target:
+              kind: ConfigMap
+              name: rhoai-dashboard-params
+          patch: |-
+            - op: replace
+              path: /data/odh-dashboard-image
+              value: quay.io/opendatahub/odh-dashboard:v2.37.1-odh
         - patch: |-
             - op: add
               path: /rules/-
@@ -84,7 +98,12 @@ spec:
 #            kind: Deployment
 #            name: rhods-dashboard
       images:
-        - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
+        # - registry.redhat.io/openshift4/ose-oauth-proxy=quay.io/jdanek/origin-oauth-proxy:latest
+        # when there's digest, we must specify full digest, how annoying, see patch above
+        - registry.redhat.io/openshift4/ose-oauth-proxy-rhel9@sha256:ca21e218e26c46e3c63d926241846f8f307fd4a586cc4b04147da49af6018ef5=quay.io/jdanek/origin-oauth-proxy:latest
+        - registry.redhat.io/openshift4/ose-oauth-proxy@sha256:4f8d66597feeb32bb18699326029f9a71a5aca4a57679d636b876377c2e95695=quay.io/jdanek/origin-oauth-proxy:latest
+#        - quay.io/opendatahub/odh-dashboard=quay.io/opendatahub/odh-dashboard:v2.38.2-odh
+        - quay.io/opendatahub/odh-dashboard=quay.io/opendatahub/odh-dashboard:v2.37.1-odh
       replicas:
         - name: rhods-dashboard
           count: 1

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import contextlib
+import pathlib
 import sys
 import subprocess
 import textwrap
@@ -71,12 +72,13 @@ def main():
         # TLSRoute is considered "experimental"
         # https://github.com/kubernetes-sigs/gateway-api/issues/2643
         sh('kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
-          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.3.0" | kubectl apply -f -; }')
+          { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.3.0&depth=1" | kubectl apply -f -; }')
 
-        sh("curl -L https://istio.io/downloadIstio | sh -", env={
-            "ISTIO_VERSION": ISTIO_VERSION,
-            "TARGET_ARCH": TARGET_ARCH,
-        })
+        if not pathlib.Path(f"istio-{ISTIO_VERSION}/bin/istioctl").exists():
+            sh("curl -L https://istio.io/downloadIstio | sh -", env={
+                "ISTIO_VERSION": ISTIO_VERSION,
+                "TARGET_ARCH": TARGET_ARCH,
+            })
         sh(f"istio-{ISTIO_VERSION}/bin/istioctl install --set values.pilot.env.PILOT_ENABLE_ALPHA_GATEWAY_API=true --set profile=minimal -y")
 
         sh("kubectl apply -f components/06-gateway.yaml")

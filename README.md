@@ -76,7 +76,7 @@ podman machine set --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
 kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
 
-python3 components/deploy.py --workbench-branch=rhoai-2.22
+python3 components/deploy.py --workbench-branch=rhoai-2.25
 ```
 
 What does it do? This, among other things, in order to setup argocd access
@@ -90,3 +90,12 @@ argocd cluster add kind-kind --yes
 kubectl apply -f components/03-kf-pipelines.yaml
 argocd app sync kf-pipelines
 ```
+
+### Troubleshooting
+
+Setting up the environment using this repo requires fast internet connection, otherwise things tend to timeout.
+
+If you're getting timeouts from `kubect apply`, increase the timeout encoded in the URL.
+
+If you're getting timeouts while syncing ArgoCD applications, try increasing the `git clone` timeout in components/01-argocd/gittimeoutconfig.yaml.
+We will have the ability to do shallow clones in ArgoCD 3.0.
