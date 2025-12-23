@@ -256,8 +256,12 @@ def main():
         #
         #     sh(f'"{kustomize_bin}" version')
         #     sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
-        sh(f"kubectl apply -k 'https://github.com/red-hat-data-services/notebooks//manifests/base/?timeout=90s&ref={workbench_branch}' --namespace redhat-ods-applications")
 
+        # we don't have permissions to pull from quay.io/rhoai
+        #workbench_repo = "https://github.com/red-hat-data-services/notebooks"
+        workbench_repo = "https://github.com/opendatahub-io/notebooks"
+        sh(f"kubectl apply -k '{workbench_repo}//manifests/base/?timeout=90s&ref={workbench_branch}&depth=1&submodules=false' --namespace redhat-ods-applications",
+           env={"GIT_LFS_SKIP_SMUDGE": "1"})
 
     with gha_log_group("Install Service CA Operator"):
         sh("kubectl label node --all node-role.kubernetes.io/master=")

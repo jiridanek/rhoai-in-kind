@@ -71,12 +71,15 @@ Therefore, what's missing from OpenShift and is required needs to be poly-filled
 
 Might get out-of-date, see .github/workflows/rhoai-in-kind.yaml for authoritative steps.
 
+For `rhoai-2.25`, use [notebooks tag v1.36.0](https://github.com/opendatahub-io/notebooks/releases/tag/v1.36.0).
+This is what went into the [corresponding ODH release](https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3351838012)
+
 ```shell
 podman machine set --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
 kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
 
-python3 components/deploy.py --workbench-branch=rhoai-2.25
+python3 components/deploy.py --workbench-branch=v1.36.0
 ```
 
 What does it do? This, among other things, in order to setup argocd access

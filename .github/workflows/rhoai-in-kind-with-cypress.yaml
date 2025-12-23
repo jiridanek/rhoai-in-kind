@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         workbench_branch:
-          - rhoai-2.25
+          - v1.36.0
 
         test_case:
           - "**/workbenches/testWorkbenchControlSuite.cy.ts"
