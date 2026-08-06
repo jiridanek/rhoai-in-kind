@@ -232,12 +232,24 @@ def main():
 
     with gha_log_group("Login to ArgoCD"):
         sh("kubectl config set-context --current --namespace=argocd")
-        sh("argocd login --core")
         # ArgoCD pods may still be starting (slow image pulls); wait until they are Available so
-        # `argocd cluster add` does not race a not-yet-ready repo-server.
+        # login / cluster-add do not race a not-yet-ready server.
         sh("kubectl wait --for=condition=Available deployment --all -n argocd --timeout=180s")
-        # time="2025-04-10T21:52:51Z" level=error msg="finished unary call with code Unknown" error="error setting cluster info in cache: dial tcp [::1]:42171: connect: connection refused" grpc.code=Unknown grpc.method=Create grpc.service=cluster.ClusterService grpc.start_time="2025-04-10T21:52:51Z" grpc.time_ms=272.867 span.kind=server system=grpc
-        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd cluster add kind-kind --yes; do sleep 1; done'")
+        # Log in to argocd-server through the Istio gateway (components/01-argocd/httproute.yaml)
+        # rather than core mode: core mode's ephemeral repo-server port-forward is fragile under
+        # load (mux: server closed). https://github.com/jiridanek/rhoai-in-kind/issues/40
+        # `set +x` in the inner shell keeps the admin password out of the `set -x` trace.
+        sh(
+            f"""timeout {ARGOCD_TIMEOUT} bash -c '
+                set +x
+                pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{{.data.password}}" | base64 --decode)
+                while ! argocd login argocd.apps.127.0.0.1.sslip.io --username admin --password "$pw" --grpc-web --insecure; do sleep 2; done
+            '"""
+        )
+        # No `argocd cluster add` needed: every Application targets the in-cluster endpoint
+        # (https://kubernetes.default.svc). Registering the external kind-kind context would also
+        # fail in server mode, because argocd-server (in-pod) cannot reach its host-only
+        # 127.0.0.1:6443 to validate the cluster.
 
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
