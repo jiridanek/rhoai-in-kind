@@ -3,17 +3,28 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import contextlib
 import pathlib
 import sys
-import subprocess
 import textwrap
-import time
-from typing import Callable, Any
 
 import certs
+
+# rhoai_in_kind lives in ../src; put it on the path so this script runs under a
+# plain interpreter (CI: `python components/deploy.py`) as well as under an
+# editable install (local uv venv).
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+
+from rhoai_in_kind import (
+    TestFrame,
+    create_resource,
+    gha_log_group,
+    sh,
+    wait_for_webhook_service_endpoint,
+)
+
+REDHAT_ODS_APPLICATIONS = "redhat-ods-applications"
+RHODS_NOTEBOOKS = "rhods-notebooks"
 
 
 def main():
@@ -111,14 +122,14 @@ def main():
     # with gha_log_group("Check that API extension server works"):
     #     tf.defer(None, lambda _: sh("timeout 30s bash -c 'while ! oc new-project dsp-wb-test; do sleep 1; done'"))
 
-    with gha_log_group("Run kubectl create namespaces redhat-ods-applications"):
-        sh("kubectl get namespace redhat-ods-applications || kubectl create namespace redhat-ods-applications")
+    with gha_log_group(f"Run kubectl create namespaces {REDHAT_ODS_APPLICATIONS}"):
+        sh(f"kubectl get namespace {REDHAT_ODS_APPLICATIONS} || kubectl create namespace {REDHAT_ODS_APPLICATIONS}")
 
-    with gha_log_group("Setup rhods-notebooks namespace"):
+    with gha_log_group(f"Setup {RHODS_NOTEBOOKS} namespace"):
         # c.f. dashboard's validateNotebookNamespaceRoleBinding
         # it will create rolebinding ${notebookNamespace}-image-pullers in dashboardNamespace
         # and it needs a clusterrole system:image-puller to exist, which does not exsist on kind by default
-        sh("kubectl get namespace rhods-notebooks || kubectl create namespace rhods-notebooks")
+        sh(f"kubectl get namespace {RHODS_NOTEBOOKS} || kubectl create namespace {RHODS_NOTEBOOKS}")
         # dummy verb and resource, just to have something there
         sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io --dry-run=client -o yaml | kubectl apply -f -")
         # I have no idea why the next line was needed; it is not mentioned in dashboard sources except in manifests
@@ -127,12 +138,12 @@ def main():
         # this is to mitigate fallout from https://github.com/opendatahub-io/odh-dashboard/pull/4049
         # not sure if this is permanent or just a temporary workaround, NOTE: rhods-notebooks serviceaccount!
         # language=Yaml
-        dashboardPullerRole = textwrap.dedent("""
+        dashboardPullerRole = textwrap.dedent(f"""
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
-            name: rhods-notebooks-image-pullers
-            namespace: redhat-ods-applications
+            name: {RHODS_NOTEBOOKS}-image-pullers
+            namespace: {REDHAT_ODS_APPLICATIONS}
         roleRef:
             apiGroup: rbac.authorization.k8s.io
             kind: ClusterRole
@@ -140,7 +151,7 @@ def main():
         subjects:
             - apiGroup: rbac.authorization.k8s.io
               kind: Group
-              name: system:serviceaccounts:rhods-notebooks
+              name: system:serviceaccounts:{RHODS_NOTEBOOKS}
         """)
         create_resource(dashboardPullerRole)
 
@@ -193,11 +204,11 @@ def main():
                 import boto3
 
             # MINIO_ROOT_USER=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_USER}}'", stdout=subprocess.PIPE).stdout.strip()
-            MINIO_ROOT_USER="AWS_ACCESS_KEY_ID"
+            MINIO_ROOT_USER = "AWS_ACCESS_KEY_ID"
             # MINIO_ROOT_PASSWORD=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_PASSWORD}}'", stdout=subprocess.PIPE).stdout.strip()
-            MINIO_ROOT_PASSWORD="AWS_SECRET_ACCESS_KEY"
+            MINIO_ROOT_PASSWORD = "AWS_SECRET_ACCESS_KEY"
             # MINIO_HOST="https://" + sh("oc get -n minio route minio-s3 -o template --template '{{.spec.host}}'", stdout=subprocess.PIPE).stdout.strip()
-            MINIO_HOST="https://minio.apps.127.0.0.1.sslip.io"
+            MINIO_HOST = "https://minio.apps.127.0.0.1.sslip.io"
 
             s3 = boto3.client("s3",
                               endpoint_url=MINIO_HOST,
@@ -224,22 +235,22 @@ def main():
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
         # dspa is looking up configmaps in this namespace
-        #sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
+        # sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
 
         sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
 
         # wait for argocd to sync the application
         # wait for deployment as it is more robust
         tf.defer(None, lambda _: sh(
-            "oc wait --for=condition=Available deployment -l app.kubernetes.io/name=data-science-pipelines-operator -n redhat-ods-applications --timeout=120s"))
+            f"oc wait --for=condition=Available deployment -l app.kubernetes.io/name=data-science-pipelines-operator -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
 
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")
         tf.defer(None, lambda _: sh(
-            "oc wait --for=condition=Available deployment -l app=notebook-controller -n redhat-ods-applications --timeout=120s"))
+            f"oc wait --for=condition=Available deployment -l app=notebook-controller -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
         tf.defer(None, lambda _: sh(
-            "oc wait --for=condition=Available deployment -l app=odh-notebook-controller -n redhat-ods-applications --timeout=120s"))
-        tf.defer(None, lambda _: wait_for_webhook_service_endpoint())
+            f"oc wait --for=condition=Available deployment -l app=odh-notebook-controller -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
+        tf.defer(None, lambda _: wait_for_webhook_service_endpoint(namespace=REDHAT_ODS_APPLICATIONS))
 
     with gha_log_group("Install Workbenches"):
         # error unmarshaling JSON: while decoding JSON: json: unknown field "apiGroup"
@@ -258,9 +269,9 @@ def main():
         #     sh(f"{kustomize_bin} build components/08-workbenches | kubectl apply -f -")
 
         # we don't have permissions to pull from quay.io/rhoai
-        #workbench_repo = "https://github.com/red-hat-data-services/notebooks"
+        # workbench_repo = "https://github.com/red-hat-data-services/notebooks"
         workbench_repo = "https://github.com/opendatahub-io/notebooks"
-        sh(f"kubectl apply -k '{workbench_repo}//manifests/base/?timeout=90s&ref={workbench_branch}&depth=1&submodules=false' --namespace redhat-ods-applications",
+        sh(f"kubectl apply -k '{workbench_repo}//manifests/base/?timeout=90s&ref={workbench_branch}&depth=1&submodules=false' --namespace {REDHAT_ODS_APPLICATIONS}",
            env={"GIT_LFS_SKIP_SMUDGE": "1"})
 
     with gha_log_group("Install Service CA Operator"):
@@ -286,7 +297,7 @@ def main():
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
         sh("timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
         tf.defer(None, lambda _: sh(
-            "kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n redhat-ods-applications --timeout=120s"))
+            f"kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
         # wait for webpage availability
         tf.defer(None, lambda _: sh('''timeout 60s bash -c 'while ! curl -k "https://rhods-dashboard.127.0.0.1.sslip.io/"; do sleep 2; done' '''))
 
@@ -296,7 +307,7 @@ def main():
         sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side --subresource=status || true")
 
     with gha_log_group("Install local-path provisioner"):
-        sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml")
+        sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.33/deploy/local-path-storage.yaml")
         tf.defer(None, lambda _: sh(
             "kubectl wait deployments --all --namespace=local-path-storage --for=condition=Available --timeout=100s"))
         # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/
@@ -310,101 +321,6 @@ def main():
     with gha_log_group("Run deferred functions"):
         with tf:
             pass
-
-
-def sh(cmd: str, env: dict[str, str] | None = None, input: str | None = None, **kwargs) -> subprocess.CompletedProcess[str]:
-    """Runs a shell command."""
-    env = env or {}
-    print(f"$ {cmd}", file=sys.stdout)
-    sys.stdout.flush()
-    completed_process = subprocess.run(
-        f"set -Eeuxo pipefail; {cmd}",
-        shell=True,
-        executable="/bin/bash",
-        env={**os.environ, **env},
-        input=input,
-        check=True,
-        text=True,
-        **kwargs,
-    )
-    sys.stdout.flush()
-    return completed_process
-
-def create_resource(resource: str):
-    sh("kubectl apply -f -", input=resource)
-
-def wait_for_webhook_service_endpoint():
-    service_name = "odh-notebook-controller-webhook-service"
-    namespace = "redhat-ods-applications"
-    timeout_seconds = 60
-    poll_interval_seconds = 1
-    start_time = time.time()
-
-    print(f"Waiting for endpoints of service '{service_name}' in namespace '{namespace}' to be ready...")
-
-    while time.time() - start_time < timeout_seconds:
-        try:
-            # Use oc get endpoints -o json to check for ready addresses
-            command = [
-                "kubectl", "get", "endpoints", service_name,
-                "-n", namespace,
-                "-o", "json"
-            ]
-            result = sh(" ".join(command), capture_output=True, timeout=5)
-            endpoints_data = json.loads(result.stdout)
-
-            # Check if 'subsets' exist and contain addresses
-            if "subsets" in endpoints_data:
-                for subset in endpoints_data["subsets"]:
-                    # Check for ready addresses ('addresses') vs not ready ('notReadyAddresses')
-                    if "addresses" in subset and subset["addresses"]:
-                        print(f"Endpoints for service '{service_name}' are ready.")
-                        return
-
-            print(f"Endpoints for '{service_name}' not ready yet, checking again in {poll_interval_seconds}s...")
-
-        except subprocess.CalledProcessError as e:
-            # Handle case where endpoints object might not exist yet or other oc errors
-            print(f"Error checking endpoints (will retry): {e.stderr}")
-        except subprocess.TimeoutExpired:
-            print("Timeout during 'oc get endpoints' command (will retry).")
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON output from oc get endpoints (will retry): {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred (will retry): {e}")
-
-        time.sleep(poll_interval_seconds)
-
-    raise TimeoutError(f"Timeout waiting for endpoints of service '{service_name}' in namespace '{namespace}' after {timeout_seconds} seconds.")
-
-
-# https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#grouping-log-lines
-@contextlib.contextmanager
-def gha_log_group(title: str) -> None:
-    """Prints the starting and ending magic strings for GitHub Actions line group in log."""
-    print(f"::group::{title}", file=sys.stdout)
-    sys.stdout.flush()
-    try:
-        yield
-    finally:
-        print("::endgroup::", file=sys.stdout)
-        sys.stdout.flush()
-
-
-class TestFrame:
-    def __init__(self):
-        self.stack = []
-
-    def defer[T](self, obj: T, fn: Callable[[T], Any]):
-        self.stack.append((obj, fn))
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        while self.stack:
-            obj, fn = self.stack.pop(0)
-            fn(obj)
 
 
 if __name__ == "__main__":
