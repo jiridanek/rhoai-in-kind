@@ -16,11 +16,13 @@
 # podman push quay.io/jdanek/api-extension:latest
 # kind load docker-image quay.io/jdanek/api-extension:latest
 
-FROM docker.io/library/golang:1.24 as builder
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.24 as builder
+ARG TARGETOS
+ARG TARGETARCH
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /api-extension
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -o /api-extension
 
 FROM fedora
 COPY --from=builder /api-extension /
