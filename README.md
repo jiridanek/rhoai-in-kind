@@ -75,22 +75,38 @@ For `rhoai-2.25`, use [notebooks tag v1.36.0](https://github.com/opendatahub-io/
 This is what went into the [corresponding ODH release](https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3351838012)
 
 ```shell
-podman machine set --rootful --memory $((16 * 1024)) --cpus 4
+# On Apple Silicon, enable Rosetta so the VM can run the amd64-only images (see note below).
+# Rosetta is set via containers.conf (there is no `podman machine` CLI flag); it is the
+# default on recent Podman — check with `podman machine inspect --format '{{.Rosetta}}'`.
+# Enable it once if needed, before creating the machine:
+mkdir -p ~/.config/containers && printf '[machine]\nrosetta = true\n' >> ~/.config/containers/containers.conf
+
+podman machine init --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
 kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
 
 python3 components/deploy.py --workbench-branch=v1.36.0
 ```
 
-> **Apple Silicon (arm64) note:** the `api-extension` image is published for `amd64` only.
-> On an arm64 Podman machine it runs under QEMU emulation and crashes at startup with the Go
-> runtime error `lfstack.push invalid packing`. Either build it natively for arm64
-> (`podman build --platform linux/arm64 -t quay.io/jdanek/api-extension:latest -f components/api-extension/Dockerfile components/api-extension/` then `kind load docker-image quay.io/jdanek/api-extension:latest`),
-> or configure the Podman machine to use Rosetta 2 for amd64 images (faster, recommended):
+> **Apple Silicon (arm64) note:** several images deployed here are published for `amd64`
+> only (e.g. `api-extension`, the data-science-pipelines-operator). Under plain QEMU
+> emulation their Go binaries crash at startup (`lfstack.push invalid packing` /
+> `SIGSEGV` in `asm_amd64.s`). The fix is to enable **Rosetta 2** in the Podman machine,
+> which translates amd64 correctly:
 >
-> ```shell
-> podman machine ssh "sudo touch /etc/containers/enable-rosetta && sudo systemctl start rosetta-activation.service"
-> ```
+> - Rosetta is enabled via `[machine] rosetta = true` in
+>   `~/.config/containers/containers.conf` (there is no `podman machine` CLI flag for it).
+>   On recent Podman this is the default — check with `podman machine inspect --format '{{.Rosetta}}'`,
+>   so hand-editing the config is often unnecessary.
+> - Applying it to an **existing** machine only needs a **restart**, not a recreate:
+>   `podman machine stop && podman machine start` (the `podman machine rm` is not required —
+>   a restart re-provisions the Rosetta share and preserves your kind cluster).
+> - Verify inside the VM: `podman machine ssh "cat /proc/sys/fs/binfmt_misc/rosetta"` should
+>   report `enabled`.
+>
+> With Rosetta on, the amd64 images run as-is. As an alternative you can build `api-extension`
+> natively for arm64:
+> `podman build --platform linux/arm64 -t quay.io/jdanek/api-extension:latest -f components/api-extension/Dockerfile components/api-extension/` then `kind load docker-image quay.io/jdanek/api-extension:latest`.
 >
 > See [macOS Podman + Rosetta setup](https://github.com/opendatahub-io/notebooks/blob/main/docs/macos-podman-rosetta.md).
 
