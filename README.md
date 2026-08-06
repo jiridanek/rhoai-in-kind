@@ -98,7 +98,7 @@ argocd app sync kf-pipelines
 
 Setting up the environment using this repo requires fast internet connection, otherwise things tend to timeout.
 
-If you're getting timeouts from `kubect apply`, increase the timeout encoded in the URL.
+If you're getting timeouts from `kubectl apply`, increase the timeout encoded in the URL.
 
 If you're getting timeouts while syncing ArgoCD applications, try increasing the `git clone` timeout in components/01-argocd/gittimeoutconfig.yaml.
 We will have the ability to do shallow clones in ArgoCD 3.0.
