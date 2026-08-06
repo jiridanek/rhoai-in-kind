@@ -82,6 +82,18 @@ kind create cluster --config components/00-kind-cluster.yaml --image docker.io/k
 python3 components/deploy.py --workbench-branch=v1.36.0
 ```
 
+> **Apple Silicon (arm64) note:** the `api-extension` image is published for `amd64` only.
+> On an arm64 Podman machine it runs under QEMU emulation and crashes at startup with the Go
+> runtime error `lfstack.push invalid packing`. Either build it natively for arm64
+> (`podman build --platform linux/arm64 -t quay.io/jdanek/api-extension:latest -f components/api-extension/Dockerfile components/api-extension/` then `kind load docker-image quay.io/jdanek/api-extension:latest`),
+> or configure the Podman machine to use Rosetta 2 for amd64 images (faster, recommended):
+>
+> ```shell
+> podman machine ssh "sudo touch /etc/containers/enable-rosetta && sudo systemctl start rosetta-activation.service"
+> ```
+>
+> See [macOS Podman + Rosetta setup](https://github.com/opendatahub-io/notebooks/blob/main/docs/macos-podman-rosetta.md).
+
 What does it do? This, among other things, in order to setup argocd access
 
 ```shell
