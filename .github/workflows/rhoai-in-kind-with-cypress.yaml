@@ -39,10 +39,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: opendatahub-io/odh-dashboard
-          ref: main
+          # Match the deployed dashboard image (components/04-odh-dashboard.yaml). `main` drifted;
+          # its npm-workspaces monorepo layout also broke the install below. See #47.
+          ref: v2.37.1-odh
           path: odh-dashboard
-          sparse-checkout: |
-            frontend/
+          # Full checkout (no sparse-checkout): odh-dashboard is an npm workspaces monorepo, so
+          # `npm ci` at the root needs every workspace (backend, packages/*, frontend, ...) plus
+          # the single root package-lock.json to be present.
 
       # Otherwise we may end up with a random Python version?
       # https://github.com/jiridanek/rhoai-in-kind/issues/16
@@ -120,25 +123,12 @@ jobs:
       - name: Setup cypress
         run: |
           set -Eeuxo pipefail
-
-          # tput: No value for $TERM and no -T specified
-          #sudo apt-get update
-          #sudo apt-get install -y xterm ncurses-bin
-
-          # sudo apt install -y libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
-
-          # > odh-dashboard@2.0.0 prepare
-          # > husky
-          #
-          # sh: 1: husky: not found
-          # npm error code 127
-          # npm error path /home/runner/work/rhoai-in-kind/rhoai-in-kind/odh-dashboard
-          # npm error command failed
-          # npm error command sh -c husky
-          npm install -g husky
-
-          npm --prefix frontend ci --prefer-offline --no-audit
-        working-directory: odh-dashboard/frontend
+          # odh-dashboard is an npm workspaces monorepo: install from the repo root so all
+          # workspaces (incl. frontend) and the cypress binary are set up. husky (a root
+          # devDependency) runs via the `prepare` script during install, so no global husky
+          # install is needed. See #47.
+          npm ci --prefer-offline --no-audit
+        working-directory: odh-dashboard
 
       - name: Run cypress
         run: |
