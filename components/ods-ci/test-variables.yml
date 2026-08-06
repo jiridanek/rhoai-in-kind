@@ -86,6 +86,9 @@ MONITORING_NAMESPACE: redhat-ods-monitoring
 OPERATOR_NAME: rhods-operator
 OPERATOR_NAMESPACE: redhat-ods-operator
 NOTEBOOKS_NAMESPACE: rhods-notebooks
+# Required by ods-ci release-2.25 Suite Setup (RHOSi.resource: IF "${INSTALL_TYPE}" == "OperatorHub").
+# Any non-OperatorHub value works and skips the OperatorHub-only setup branch.
+INSTALL_TYPE: CLI
 OPENSHIFT_PIPELINES_CHANNEL: latest
 TEST_CLUSTER_NAME: dashboard-e2e
 #TEST_CLUSTER_URL: https://console-openshift-console.apps.some-cluster.some-platform.rh-ods.com
