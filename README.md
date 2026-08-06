@@ -114,3 +114,87 @@ If you're getting timeouts from `kubectl apply`, increase the timeout encoded in
 
 If you're getting timeouts while syncing ArgoCD applications, try increasing the `git clone` timeout in components/01-argocd/gittimeoutconfig.yaml.
 We will have the ability to do shallow clones in ArgoCD 3.0.
+
+### DNS: `*.sslip.io` hostnames don't resolve (macOS)
+
+Services are exposed under [sslip.io](https://sslip.io) wildcard hostnames such as
+`minio.apps.127.0.0.1.sslip.io`, which are supposed to resolve to `127.0.0.1`.
+If `curl -k https://minio.apps.127.0.0.1.sslip.io` hangs or `deploy.py` fails in
+`create_buckets()` with `NameResolutionError` / `EndpointConnectionError` — while
+the cluster gateway is actually up — the problem is host DNS resolution, not the
+cluster.
+
+Two common macOS causes:
+
+1. **A per-domain resolver in `/etc/resolver/` points at a local DNS that isn't running.**
+   A file like `/etc/resolver/127.0.0.1.sslip.io` containing `nameserver 127.0.0.1`
+   routes every `*.127.0.0.1.sslip.io` lookup to `127.0.0.1:53`. If you don't have a
+   local resolver (dnsmasq/CoreDNS) listening there, resolution fails.
+2. **DNS-rebinding protection** in Tailscale MagicDNS or some corporate/VPN resolvers,
+   which drops answers pointing to a loopback address.
+
+Diagnostic commands (macOS):
+
+```shell
+# What the system resolver (curl/python/boto3) actually returns — empty means it refuses the name
+dscacheutil -q host -a name minio.apps.127.0.0.1.sslip.io
+
+# Direct query, bypassing /etc/resolver overrides (sslip.io should answer 127.0.0.1)
+nslookup minio.apps.127.0.0.1.sslip.io
+
+# Inspect resolver scopes and per-domain nameservers
+scutil --dns
+ls -la /etc/resolver/ && cat /etc/resolver/*
+
+# Prove the gateway works by bypassing DNS entirely (403 from MinIO = reachable)
+curl -k --resolve minio.apps.127.0.0.1.sslip.io:443:127.0.0.1 https://minio.apps.127.0.0.1.sslip.io/
+
+# Is a local resolver actually listening on :53?
+sudo lsof -nP -iUDP:53 -iTCP:53
+```
+
+Fixes:
+
+- If you rely on a local sslip.io resolver, make sure it is running.
+- Otherwise remove the stale override so normal DNS (which resolves sslip.io to
+  `127.0.0.1`) is used, and flush the cache:
+
+  ```shell
+  sudo rm /etc/resolver/127.0.0.1.sslip.io
+  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
+  ```
+
+- If Tailscale is intercepting DNS: `tailscale set --accept-dns=false`.
+
+#### Local `sslip.io` resolver via dnsmasq (macOS)
+
+The most robust setup is a local dnsmasq that maps the whole wildcard to loopback —
+it works offline, is fast, and sidesteps rebinding filters. This is the setup this
+repo was developed with:
+
+```shell
+brew install dnsmasq
+
+# Homebrew's prefix differs by arch (/opt/homebrew on Apple Silicon, /usr/local on Intel).
+BREW_PREFIX="$(brew --prefix)"
+
+# 1. Map every *.127.0.0.1.sslip.io host to 127.0.0.1.
+#    `brew services` starts dnsmasq with `-7 "$BREW_PREFIX/etc/dnsmasq.d",*.conf`,
+#    so any *.conf here is loaded automatically (no conf-dir edit needed).
+echo 'address=/.127.0.0.1.sslip.io/127.0.0.1' > "$BREW_PREFIX/etc/dnsmasq.d/sslip.conf"
+
+# 2. Route *.127.0.0.1.sslip.io lookups to the local resolver
+echo 'nameserver 127.0.0.1' | sudo tee /etc/resolver/127.0.0.1.sslip.io
+
+# 3. Start dnsmasq (needs sudo to bind port 53)
+sudo brew services start dnsmasq
+```
+
+Verify:
+
+```shell
+dscacheutil -q host -a name minio.apps.127.0.0.1.sslip.io   # should print 127.0.0.1
+```
+
+The usual failure mode is simply that the dnsmasq service isn't running (e.g. after
+a reboot if it wasn't enabled): `sudo brew services start dnsmasq` fixes it.
