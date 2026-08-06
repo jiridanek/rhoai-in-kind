@@ -1,6 +1,8 @@
 on:
   pull_request:
+  # only main: a same-repo branch PR otherwise triggers this twice (push + pull_request). See #46
   push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * *' # at 02:00
