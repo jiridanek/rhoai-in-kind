@@ -293,6 +293,44 @@ def main():
         sh(f"kubectl apply -k '{workbench_repo}//manifests/base/?timeout=90s&ref={workbench_branch}&depth=1&submodules=false' --namespace {REDHAT_ODS_APPLICATIONS}",
            env={"GIT_LFS_SKIP_SMUDGE": "1"})
 
+    with gha_log_group("Alias minimal workbench imagestream to the downstream name"):
+        # opendatahub-tests' workbench tests request the downstream image name
+        # `s2i-minimal-notebook` (opendatahub-tests tests/workbenches/conftest.py:44; the
+        # distribution is derived from our DSC release.name "OpenShift AI Self-Managed" =>
+        # downstream). We deploy the upstream `jupyter-minimal-notebook` imagestream, so create a
+        # downstream-named alias of it. The odh-notebook-controller mutating webhook
+        # (SetContainerImageFromRegistry) resolves the workbench image from this imagestream's
+        # status.tags[].dockerImageReference. This is the only imagestream the tests reference.
+        # https://github.com/jiridanek/rhoai-in-kind/issues/48
+        import json
+
+        # status.tags[].items[].dockerImageReference is filled in by the best-effort
+        # mutate-imagestream-add-simplified-status Kyverno policy, so don't assume it is present
+        # the instant the workbench manifests apply — wait until the source has a resolved
+        # reference, otherwise the alias could be created without a resolvable workbench image.
+        sh(
+            f"""timeout 120s bash -c 'while [ -z "$(kubectl -n {REDHAT_ODS_APPLICATIONS} get imagestream jupyter-minimal-notebook -o jsonpath="{{.status.tags[*].items[*].dockerImageReference}}" 2>/dev/null)" ]; do sleep 2; done'"""
+        )
+        src = json.loads(sh(
+            f"kubectl -n {REDHAT_ODS_APPLICATIONS} get imagestream jupyter-minimal-notebook -o json",
+            capture_output=True).stdout)
+        labels = {
+            k: v for k, v in (src["metadata"].get("labels") or {}).items()
+            # don't advertise the alias as a dashboard workbench image, or it shows up as a
+            # duplicate entry in the spawner next to jupyter-minimal-notebook
+            if k != "opendatahub.io/notebook-image"
+        }
+        src["metadata"] = {
+            "name": "s2i-minimal-notebook",
+            "namespace": REDHAT_ODS_APPLICATIONS,
+            "labels": labels,
+            # not operator-managed: this alias is maintained here, not by the ODH operator
+            "annotations": {"opendatahub.io/managed": "false"},
+        }
+        # carry over the (now-resolved) status.tags so the alias resolves regardless of whether
+        # the Kyverno mutation fires again on this create.
+        sh("kubectl apply -f -", input=json.dumps(src))
+
     with gha_log_group("Install Service CA Operator"):
         sh("kubectl label node --all node-role.kubernetes.io/master=")
         sh("timeout 30s bash -c 'while ! kubectl apply -k components/05-ca-operator; do sleep 1; done'")
