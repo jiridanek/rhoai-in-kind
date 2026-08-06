@@ -93,7 +93,10 @@ jobs:
       - name: Run workbenches tests
         run: |
           set -Eeuxo pipefail
-          uv run pytest tests/workbenches
+          # https://github.com/opendatahub-io/opendatahub-tests/blob/41e0d6fd4be365a083a3747a7037f70a3540b4e3/tests/workbenches/conftest.py#L44
+          # deselect: test_oauth_container_resource_customization asserts the oauth sidecar CPU
+          # request, but our remove-cpu-memory-requests Kyverno policy strips it here. See #48
+          uv run pytest tests/workbenches --deselect tests/workbenches/notebook-controller/test_spawning.py::TestNotebook::test_oauth_container_resource_customization
         working-directory: opendatahub-tests
         env:
           # https://github.com/jiridanek/rhoai-in-kind/issues/20
