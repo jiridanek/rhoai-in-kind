@@ -26,6 +26,10 @@ from rhoai_in_kind import (
 REDHAT_ODS_APPLICATIONS = "redhat-ods-applications"
 RHODS_NOTEBOOKS = "rhods-notebooks"
 
+# Ceiling for the ArgoCD retry loops (`timeout <N> bash -c 'while ! argocd ...'`).
+# It is a retry budget, not a fixed wait: the loop exits as soon as the command succeeds.
+ARGOCD_TIMEOUT = "60s"
+
 
 def main():
     tf = TestFrame()
@@ -229,15 +233,18 @@ def main():
     with gha_log_group("Login to ArgoCD"):
         sh("kubectl config set-context --current --namespace=argocd")
         sh("argocd login --core")
+        # ArgoCD pods may still be starting (slow image pulls); wait until they are Available so
+        # `argocd cluster add` does not race a not-yet-ready repo-server.
+        sh("kubectl wait --for=condition=Available deployment --all -n argocd --timeout=180s")
         # time="2025-04-10T21:52:51Z" level=error msg="finished unary call with code Unknown" error="error setting cluster info in cache: dial tcp [::1]:42171: connect: connection refused" grpc.code=Unknown grpc.method=Create grpc.service=cluster.ClusterService grpc.start_time="2025-04-10T21:52:51Z" grpc.time_ms=272.867 span.kind=server system=grpc
-        sh("timeout 30s bash -c 'while ! argocd cluster add kind-kind --yes; do sleep 1; done'")
+        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd cluster add kind-kind --yes; do sleep 1; done'")
 
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
         # dspa is looking up configmaps in this namespace
         # sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
 
-        sh("timeout 30s bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
+        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
 
         # wait for argocd to sync the application
         # wait for deployment as it is more robust
@@ -295,7 +302,7 @@ def main():
 
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
-        sh("timeout 30s bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
+        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
         tf.defer(None, lambda _: sh(
             f"kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
         # wait for webpage availability
