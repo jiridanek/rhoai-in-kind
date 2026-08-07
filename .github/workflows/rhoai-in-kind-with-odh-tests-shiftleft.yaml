@@ -1,6 +1,8 @@
 on:
   pull_request:
+  # only main: a same-repo branch PR otherwise triggers this twice (push + pull_request). See #46
   push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * *' # at 02:00
@@ -13,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         workbench_branch:
-          - rhoai-2.23
+          - v1.36.0
 
     steps:
 
@@ -22,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: opendatahub-io/opendatahub-tests
-          ref: main
+          ref: 94670b336c632ac2c0022b347444b687d9384327  # Sept 18, 2025 - last known working
           path: opendatahub-tests
 
       # Otherwise we may end up with a random Python version?
@@ -91,7 +93,10 @@ jobs:
       - name: Run workbenches tests
         run: |
           set -Eeuxo pipefail
-          uv run pytest tests/workbenches
+          # https://github.com/opendatahub-io/opendatahub-tests/blob/41e0d6fd4be365a083a3747a7037f70a3540b4e3/tests/workbenches/conftest.py#L44
+          # deselect: test_oauth_container_resource_customization asserts the oauth sidecar CPU
+          # request, but our remove-cpu-memory-requests Kyverno policy strips it here. See #48
+          uv run pytest tests/workbenches --deselect tests/workbenches/notebook-controller/test_spawning.py::TestNotebook::test_oauth_container_resource_customization
         working-directory: opendatahub-tests
         env:
           # https://github.com/jiridanek/rhoai-in-kind/issues/20

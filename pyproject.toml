@@ -3,7 +3,9 @@ name = "rhoai-in-kind"
 version = "0.1.0"
 description = "Runs OpenShift AI Workbenches in GitHub Actions"
 requires-python = ">=3.13, <3.14"
-dependencies = []
+dependencies = [
+    "boto3",  # used by deploy.py create_buckets() to provision MinIO/S3 buckets
+]
 
 [tool.ruff]
 line-length = 120
@@ -15,3 +17,8 @@ select = [
 ]
 # https://docs.astral.sh/ruff/rules/multi-line-implicit-string-concatenation/#formatter-compatibility
 flake8-implicit-str-concat.allow-multiline = false
+
+# https://docs.astral.sh/uv/concepts/build-backend/#choosing-a-build-backend
+[build-system]
+requires = ["uv_build>=0.11.8,<0.13"]
+build-backend = "uv_build"
