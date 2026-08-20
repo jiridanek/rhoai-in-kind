@@ -30,7 +30,9 @@ spec:
     path: config/overlays/rhoai
     # can't use stable-2.x because there images aren't pinned, use :latest
     #  https://github.com/opendatahub-io/data-science-pipelines-operator/blob/stable-2.x/config/base/params.env
-    targetRevision: v2.18.0
+    # v2.15.1 is what rhoai-2.25 actually ships, per
+    #  https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3351838012
+    targetRevision: v2.15.1
     kustomize:
       patches:
         - target:

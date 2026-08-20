@@ -21,10 +21,18 @@ resources:
   #- git@github.com:opendatahub-io/kubeflow.git/components/notebook-controller/config/overlays/openshift/
   #- git@github.com:opendatahub-io/kubeflow.git/components/odh-notebook-controller/config/base/
 
+  # v1.10.0-6 (the community tag matching opendatahub-community#183's "ODH 2.35.0 ~ rhoai-2.25"
+  # tracker) already contains RHOAIENG-32633 (renamed the Elyra runtime config's display_name
+  # from "Data Science Pipeline" to "AI Pipeline"), which Jira targets at rhoai-3.0, not 2.25 -
+  # it landed on main days before the community tag was cut, but isn't in the downstream 2.x
+  # scope. Verified directly against the real downstream red-hat-data-services/kubeflow
+  # `rhoai-2.25` branch: both controllers are pinned there to v1.10.0-5, and that build still
+  # says "Data Science Pipeline" (matching ods-ci's release-2.25 suite).
   # https://github.com/opendatahub-io/kubeflow/releases/tag/v1.10.0-6
   # https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3339632379
-  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/openshift?ref=v1.10.0-6&submodules=false
-  - https://github.com/opendatahub-io/kubeflow//components/odh-notebook-controller/config/base?ref=v1.10.0-6&submodules=false
+  # https://issues.redhat.com/browse/RHOAIENG-32633
+  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/openshift?ref=v1.10.0-5&submodules=false
+  - https://github.com/opendatahub-io/kubeflow//components/odh-notebook-controller/config/base?ref=v1.10.0-5&submodules=false
   - culler-config.yaml
 
 patches:
