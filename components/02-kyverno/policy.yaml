@@ -269,3 +269,48 @@ spec:
 #                    $patch: delete
 #                    cpu:
 #                    memory:
+---
+# DSPA's `pipelineStore: kubernetes` mode (the Dashboard's "Create pipeline server"
+# checkbox, checked by default since opendatahub-io/odh-dashboard#4484) breaks Elyra
+# pipelines two independent ways:
+#   1. Generic pipeline components fail immediately with "No minio credentials
+#      provider can be initialised for current configs." - S3/COS credential
+#      injection doesn't reach the pipeline step pod for KUBERNETES_SECRET auth
+#      in this mode.
+#   2. Elyra's "get pipeline ID by name" lookup fails outright with "Invalid input
+#      error: Filter eq is not implemented for Kubernetes pipeline store. Only
+#      substring is supported."
+# Both are RHOAIENG-32942, already fixed upstream (kubeflow/pipelines#12189,
+# cherry-picked into opendatahub-io/data-science-pipelines#202, merged 2025-08-28)
+# and verified fixed in a real RHOAI 2.25 build. But the fix isn't reachable from
+# this repo's pinned DSPO community tag (v2.15.1, cut 2025-08-13 - two weeks before
+# the fix merged; no newer community tag exists as of this writing). `pipelineStore:
+# database` (the older, MariaDB-backed mode) works correctly with the same secret.
+# Force it until DSPO cuts a community release that includes the fix.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: force-dspa-pipelinestore-database
+  annotations:
+    policies.kyverno.io/title: Force DataSciencePipelinesApplication pipelineStore to database
+    policies.kyverno.io/category: Data Science Pipelines
+    policies.kyverno.io/subject: DataSciencePipelinesApplication
+    policies.kyverno.io/description: >-
+      Forces spec.apiServer.pipelineStore to "database" on every DSPA. DSPO's
+      "kubernetes" pipelineStore mode (RHOAIENG-32942, fixed upstream but not yet in
+      any DSPO community release) breaks Elyra pipelines: generic components fail
+      with a minio-credentials error, and pipeline-run submission fails with
+      "Filter eq is not implemented for Kubernetes pipeline store".
+spec:
+  rules:
+    - name: force-pipelinestore-database
+      match:
+        any:
+          - resources:
+              kinds:
+                - DataSciencePipelinesApplication
+      mutate:
+        patchStrategicMerge:
+          spec:
+            apiServer:
+              pipelineStore: database
