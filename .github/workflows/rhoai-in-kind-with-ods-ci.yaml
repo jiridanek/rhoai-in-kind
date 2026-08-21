@@ -11,34 +11,53 @@ permissions: {}
 
 jobs:
   rhoai-in-kind:
+    name: >-
+      rhoai-in-kind (${{ matrix.workbench_branch }}, ${{ matrix.test_case }}${{ matrix.artifact_suffix && format(' [{0}]', matrix.artifact_suffix) || '' }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     strategy:
       fail-fast: false
+      # Every entry is a self-contained job spec (workbench_branch + test_case + optional
+      # extra_robot_args/prepull_images/artifact_suffix) rather than a flat `test_case:` axis,
+      # so that two entries can share the same test_case (see the split elyra entries below)
+      # without relying on GitHub Actions' include/axis merge semantics, which only merge an
+      # include entry into a generated combination when its keys match *all* axes - ambiguous
+      # and easy to get wrong once entries need heterogeneous optional fields.
       matrix:
-        workbench_branch:
-          - v1.36.0
+        include:
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
 
-        test_case:
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
-
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
@@ -50,10 +69,40 @@ jobs:
           #- "tests/Tests/0500__ide/0507__culler/culler.robot"
 
           # oc new-project "elyra-test-6893" --display-name="elyra-test-6893" --description="testing Elyra pipeline functionality" --as=ldap-user2 --as-group=system:authenticated --as-group=system:authenticated:oauth 2>&1
-          - "tests/Tests/0500__ide/0502__ide_elyra.robot"
+          #
+          # Split into one matrix entry per robot Test Case (rather than one entry for the
+          # whole file) so each can carry its own prepull_images/extra_robot_args. Both share
+          # this file's Suite Setup/Teardown, so each entry re-runs that (~1-2min extra, ok).
+          #
+          # Test A (Sanity, single image) already passes reliably - no pre-pull needed.
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
+            artifact_suffix: "sanity"
+            extra_robot_args: "-i Sanity"
+          # Test B (Tier1, templated over PyTorch/TensorFlow/TrustyAI images): fails because
+          # the TrustyAI image's cold pull can take ~5 minutes under CI I/O load, blowing the
+          # robot test's fixed 5-minute workbench-spawn timeout. See
+          # https://github.com/jiridanek/rhoai-in-kind/issues/67
+          # A DevSpaces-like DaemonSet image-puller (RHOAIENG-56335) was considered instead of
+          # this ad-hoc pre-pull and rejected: that mechanism only helps on multi-node
+          # autoscaling, where a racing puller pod and workload pod land on a new node
+          # together; this kind cluster is one static node that already exists before the test
+          # runs, so `kind load docker-image` (which injects the image directly, no pull at
+          # all) is simpler and strictly sufficient here.
+          # CAUTION: image tags are pinned to workbench_branch v1.36.0 above; keep in sync.
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
+            artifact_suffix: "tier1"
+            extra_robot_args: "-i Tier1"
+            prepull_images: >-
+              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-trustyai-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
-          - "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
+          - workbench_branch: v1.36.0
+            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
           # TODO: 9) error: the server doesn't have a resource type "group": 1 != 0
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/jupyterhub-user-access.robot"
 
@@ -152,6 +201,20 @@ jobs:
           timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.25.1; do sleep 1; done'
           kind load docker-image docker.io/istio/pilot:1.25.1
 
+      # Pre-pulls large workbench/runtime images a matrix entry declares via `prepull_images`,
+      # straight into the kind node's containerd - avoids cold registry pulls racing a robot
+      # test's fixed spawn timeout under CI I/O load. No-op for entries without prepull_images.
+      - name: Pre-pull matrix-specified images inside kind cluster
+        if: matrix.prepull_images
+        run: |
+          set -Eeuxo pipefail
+          for image in ${{ matrix.prepull_images }}; do
+            # Observed worst case for a large workbench image under CI I/O load is ~5m0s
+            # (see issue #67); use a generous margin rather than cutting it close.
+            timeout 600s bash -c "while ! docker pull '$image'; do sleep 1; done"
+            kind load docker-image "$image"
+          done
+
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
       - name: Install Poetry
@@ -184,7 +247,7 @@ jobs:
       - name: Run ods-ci tests
         run: |
           set -Eeuxo pipefail
-          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI -e Resources-GPU'
+          ./run_robot_test.sh --skip-oclogin true --test-variables-file ${{ github.workspace }}/ods-ci/ods_ci/test-variables.yml --test-case ${{ matrix.test_case }} --extra-robot-args '-e AutomationBug -e ProductBug -e Dashboard -e deprecatedTest -e ExcludeOnRHOAI -e Resources-GPU ${{ matrix.extra_robot_args }}'
         # the location is important and it's not worth it to change it
         # * poetry looks for the lock file in what is the current directory or its parents
         # * by default TEST_CASE_FILE=tests/Tests
@@ -207,13 +270,17 @@ jobs:
           import pathlib
           import os
           import re
-          
+
           test_case = os.environ["TEST_CASE"]
+          artifact_suffix = os.environ.get("ARTIFACT_SUFFIX", "")
           artifact_name = re.sub(r'^.*/(?P<filename>[^/]+)\.robot$', r'\g<filename>', test_case)
+          if artifact_suffix:
+              artifact_name = f"{artifact_name}-{artifact_suffix}"
           pathlib.Path(os.environ["GITHUB_OUTPUT"]).write_text(f"artifact-name={artifact_name}")
 
         env:
           TEST_CASE: ${{ matrix.test_case }}
+          ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix }}
 
       - name: Collect logs
         run: ${PYTHON3} components/logs.py
