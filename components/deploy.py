@@ -263,6 +263,13 @@ def main():
         tf.defer(None, lambda _: sh(
             f"oc wait --for=condition=Available deployment -l app.kubernetes.io/name=data-science-pipelines-operator -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
 
+        # Only reachable once the sync above has installed DSPO's CRDs. Applying this any
+        # earlier (e.g. alongside "Install Kyverno policies") races Kyverno's GVK/GVR
+        # resolution for the DataSciencePipelinesApplication kind and was observed to block
+        # the readiness wait for every ClusterPolicy, not just this one (PR #70).
+        sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/dspa-pipelinestore-policy.yaml; do sleep 1; done'")
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy/force-dspa-pipelinestore-database"))
+
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")
         tf.defer(None, lambda _: sh(
