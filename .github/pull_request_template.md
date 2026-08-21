@@ -28,9 +28,9 @@ The approved plan for this change goes here.
 <details>
 <summary>Trajectory</summary>
 
-The full investigation trajectory goes here — every step taken, including dead ends and
-reverted approaches, in full and unabridged. Do not summarize or omit steps as
-"not notable."
+The full trajectory goes here — every step of investigating, implementing, and testing the
+fix, including dead ends and reverted approaches, in full and unabridged. Do not summarize
+or omit steps as "not notable."
 
 </details>
 
