@@ -75,13 +75,9 @@ jobs:
           # Test B (Tier1, templated over PyTorch/TensorFlow/TrustyAI images): fails because
           # the TrustyAI image's cold pull can take ~5 minutes under CI I/O load, blowing the
           # robot test's fixed 5-minute workbench-spawn timeout. See
-          # https://github.com/jiridanek/rhoai-in-kind/issues/67
-          # A DevSpaces-like DaemonSet image-puller (RHOAIENG-56335) was considered instead of
-          # this ad-hoc pre-pull and rejected: that mechanism only helps on multi-node
-          # autoscaling, where a racing puller pod and workload pod land on a new node
-          # together; this kind cluster is one static node that already exists before the test
-          # runs, so `kind load docker-image` (which injects the image directly, no pull at
-          # all) is simpler and strictly sufficient here.
+          # https://github.com/jiridanek/rhoai-in-kind/issues/67 - fixed via the
+          # image-puller DaemonSet steps below (see their comments for the RHOAIENG-56335 /
+          # che-incubator/kubernetes-image-puller background).
           # CAUTION: image tags are pinned to the job's WORKBENCH_BRANCH env above; keep in sync.
           - test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
             artifact_suffix: "tier1"
@@ -177,34 +173,102 @@ jobs:
       - name: Verify kubectl version
         run: kubectl version --client
 
+      # In-cluster image pre-pull via a DaemonSet, per the general approach from
+      # RHOAIENG-56335 ("Increase in session startup due to latest image pull") and implemented
+      # by che-incubator/kubernetes-image-puller (the tool behind Red Hat OpenShift Dev
+      # Spaces's image pre-pull): each container runs `sleep 720h` on the target image itself,
+      # which (a) makes the node's own containerd pull the image directly from the registry -
+      # one hop, unlike `docker pull` + `kind load docker-image`'s pull-then-copy - and
+      # (b) keeps a real running container referencing the image, so kubelet's image GC won't
+      # evict it again under disk pressure (relevant here, see issue #67) the way a one-shot
+      # pull-and-exit container would risk.
+      #
+      # ✘ Istiod encountered an error: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
+      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")Error: failed to install manifests: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
+      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")
+      # This must run (and be waited on, below) before "Deploy stuff into Kubernetes", since
+      # that step's `istioctl install` synchronously waits for istiod itself - a pre-pull step
+      # placed after that one (as this used to be) cannot help the failure above at all: GitHub
+      # Actions steps never overlap, so by the time a later step starts, istioctl has already
+      # finished waiting (or already failed).
+      # CAUTION: the image tag is likely to go out of date, try to keep in sync
+      - name: Pre-pull istio image via image-puller DaemonSet
+        run: |
+          set -Eeuxo pipefail
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: DaemonSet
+          metadata:
+            name: image-puller-istio
+            namespace: kube-system
+            labels:
+              app: image-puller-istio
+          spec:
+            selector:
+              matchLabels:
+                app: image-puller-istio
+            template:
+              metadata:
+                labels:
+                  app: image-puller-istio
+              spec:
+                tolerations:
+                  - operator: Exists
+                containers:
+                  - name: istio-pilot
+                    image: docker.io/istio/pilot:1.25.1
+                    command: ["sleep", "720h"]
+          EOF
+
+      - name: Wait for istio image-puller DaemonSet to be ready
+        run: kubectl rollout status daemonset/image-puller-istio -n kube-system --timeout=600s
+
+      # Same in-cluster image-puller mechanism as above, for images a matrix entry declares via
+      # `prepull_images` (large workbench/runtime images that can otherwise cold-pull slowly
+      # enough under CI I/O load to blow a robot test's fixed spawn timeout - see issue #67).
+      # No-op for entries without prepull_images. Only creates the DaemonSet here - the
+      # blocking wait for it happens later, right before "Run ods-ci tests", so the pull runs
+      # in the background, overlapping with the rest of this job's setup (deploy.py, Poetry,
+      # oc login) instead of costing extra wall-clock time on top of it.
+      - name: Pre-pull matrix-specified images via image-puller DaemonSet
+        if: matrix.prepull_images
+        run: |
+          set -Eeuxo pipefail
+          containers=""
+          i=0
+          for image in ${{ matrix.prepull_images }}; do
+            containers="${containers}
+                  - name: img-${i}
+                    image: \"${image}\"
+                    command: [\"sleep\", \"720h\"]"
+            i=$((i + 1))
+          done
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: DaemonSet
+          metadata:
+            name: image-puller-prepull
+            namespace: kube-system
+            labels:
+              app: image-puller-prepull
+          spec:
+            selector:
+              matchLabels:
+                app: image-puller-prepull
+            template:
+              metadata:
+                labels:
+                  app: image-puller-prepull
+              spec:
+                tolerations:
+                  - operator: Exists
+                containers:${containers}
+          EOF
+
       - name: Deploy stuff into Kubernetes
         run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
         env:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
-
-      # ✘ Istiod encountered an error: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
-      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")Error: failed to install manifests: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
-      #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")
-      # CAUTION: the image tag is likely to go out of date, try to keep in sync
-      - name: Pre-pull istio inside kind cluster
-        run: |
-          set -Eeuxo pipefail
-          timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.25.1; do sleep 1; done'
-          kind load docker-image docker.io/istio/pilot:1.25.1
-
-      # Pre-pulls large workbench/runtime images a matrix entry declares via `prepull_images`,
-      # straight into the kind node's containerd - avoids cold registry pulls racing a robot
-      # test's fixed spawn timeout under CI I/O load. No-op for entries without prepull_images.
-      - name: Pre-pull matrix-specified images inside kind cluster
-        if: matrix.prepull_images
-        run: |
-          set -Eeuxo pipefail
-          for image in ${{ matrix.prepull_images }}; do
-            # Observed worst case for a large workbench image under CI I/O load is ~5m0s
-            # (see issue #67); use a generous margin rather than cutting it close.
-            timeout 600s bash -c "while ! docker pull '$image'; do sleep 1; done"
-            kind load docker-image "$image"
-          done
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
@@ -233,6 +297,14 @@ jobs:
 
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
+
+      # The DaemonSet was created way back before "Deploy stuff into Kubernetes"; by now it's
+      # had the whole deploy/Poetry/oc-login setup's worth of wall-clock time to pull in the
+      # background, so this should return near-instantly. This is the actual guarantee that
+      # the images are cached before the robot test below tries to spawn a workbench with one.
+      - name: Wait for matrix-specified image-puller DaemonSet to be ready
+        if: matrix.prepull_images
+        run: kubectl rollout status daemonset/image-puller-prepull -n kube-system --timeout=600s
 
       # NOTE: Tests in ods-ci often depend on what's before them in the file, so it's best to run file-by-file
       - name: Run ods-ci tests
