@@ -6,6 +6,18 @@ networking:
   apiServerPort: 6443
 nodes:
   - role: control-plane
+    # Default kubelet behavior is serializeImagePulls: true (one image pull at a time,
+    # node-wide, FIFO across every pod) - kind doesn't override this either. That queue isn't
+    # priority-aware, so a background image-puller DaemonSet's large pulls queued ahead of
+    # something else's small, normally-instant pull can starve it for the whole duration
+    # rather than actually contending for bandwidth (see .github/workflows's image-puller
+    # DaemonSet steps and the cert-manager starvation they caused before being reordered).
+    # Allow a few pulls in parallel so unrelated small pulls aren't stuck behind one big queue.
+    kubeadmConfigPatches:
+      - |
+        kind: KubeletConfiguration
+        serializeImagePulls: false
+        maxParallelImagePulls: 3
     extraPortMappings:
       - containerPort: 30207
         hostPort: 15021
