@@ -14,14 +14,20 @@ permissions: {}
 jobs:
   rhoai-in-kind:
     name: >-
-      rhoai-in-kind (${{ matrix.workbench_branch }}, ${{ matrix.test_case }}${{ matrix.artifact_suffix && format(' [{0}]', matrix.artifact_suffix) || '' }})
+      rhoai-in-kind (${{ env.WORKBENCH_BRANCH }}, ${{ matrix.test_case }}${{ matrix.artifact_suffix && format(' [{0}]', matrix.artifact_suffix) || '' }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      # Not a matrix axis: every entry below uses the same workbench_branch today, and since
+      # the matrix is include:-only (see below), a second value would need every entry
+      # duplicated anyway rather than getting an automatic cross-product - so there's no
+      # benefit to carrying it as a per-entry field. Bump this single value when needed.
+      WORKBENCH_BRANCH: v1.36.0
 
     strategy:
       fail-fast: false
-      # Every entry is a self-contained job spec (workbench_branch + test_case + optional
+      # Every entry is a self-contained job spec (test_case + optional
       # extra_robot_args/prepull_images/artifact_suffix) rather than a flat `test_case:` axis,
       # so that two entries can share the same test_case (see the split elyra entries below)
       # without relying on GitHub Actions' include/axis merge semantics, which only merge an
@@ -29,37 +35,23 @@ jobs:
       # and easy to get wrong once entries need heterogeneous optional fields.
       matrix:
         include:
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
 
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
@@ -77,8 +69,7 @@ jobs:
           # this file's Suite Setup/Teardown, so each entry re-runs that (~1-2min extra, ok).
           #
           # Test A (Sanity, single image) already passes reliably - no pre-pull needed.
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
+          - test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
             artifact_suffix: "sanity"
             extra_robot_args: "-i Sanity"
           # Test B (Tier1, templated over PyTorch/TensorFlow/TrustyAI images): fails because
@@ -91,9 +82,8 @@ jobs:
           # together; this kind cluster is one static node that already exists before the test
           # runs, so `kind load docker-image` (which injects the image directly, no pull at
           # all) is simpler and strictly sufficient here.
-          # CAUTION: image tags are pinned to workbench_branch v1.36.0 above; keep in sync.
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
+          # CAUTION: image tags are pinned to the job's WORKBENCH_BRANCH env above; keep in sync.
+          - test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
             artifact_suffix: "tier1"
             extra_robot_args: "-i Tier1"
             prepull_images: >-
@@ -103,8 +93,7 @@ jobs:
               quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
-          - workbench_branch: v1.36.0
-            test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
+          - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
           # TODO: 9) error: the server doesn't have a resource type "group": 1 != 0
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/jupyterhub-user-access.robot"
 
@@ -189,7 +178,7 @@ jobs:
         run: kubectl version --client
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
+        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
         env:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
