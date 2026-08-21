@@ -246,6 +246,11 @@ jobs:
       # images still stuck in ContainerCreating - see PR #72 CI run 32532246937. Kubernetes
       # has no pull-priority mechanism that would let this stay ahead of that queue and not
       # matter; not competing with deploy.py's own pulls at all is simpler and sufficient.
+      # One DaemonSet per image, not one DaemonSet with N sibling containers: kubelet's pod
+      # worker starts a single pod's own containers sequentially regardless of the node's
+      # maxParallelImagePulls setting (see components/00-kind-cluster.yaml) - that setting only
+      # allows concurrency *across* pods. Separate pods actually let up to 3 of these pulls run
+      # at once instead of strictly one-at-a-time.
       - name: Pre-pull matrix-specified images via image-puller DaemonSet
         if: matrix.prepull_images
         shell: python {0}
@@ -256,30 +261,28 @@ jobs:
           import subprocess
 
           images = os.environ["PREPULL_IMAGES"].split()
-          containers = [
-              {"name": f"img-{i}", "image": image, "command": ["sleep", "720h"]}
-              for i, image in enumerate(images)
-          ]
-          manifest = {
-              "apiVersion": "apps/v1",
-              "kind": "DaemonSet",
-              "metadata": {
-                  "name": "image-puller-prepull",
-                  "namespace": "kube-system",
-                  "labels": {"app": "image-puller-prepull"},
-              },
-              "spec": {
-                  "selector": {"matchLabels": {"app": "image-puller-prepull"}},
-                  "template": {
-                      "metadata": {"labels": {"app": "image-puller-prepull"}},
-                      "spec": {
-                          "tolerations": [{"operator": "Exists"}],
-                          "containers": containers,
+          for i, image in enumerate(images):
+              name = f"image-puller-prepull-{i}"
+              manifest = {
+                  "apiVersion": "apps/v1",
+                  "kind": "DaemonSet",
+                  "metadata": {
+                      "name": name,
+                      "namespace": "kube-system",
+                      "labels": {"app": name},
+                  },
+                  "spec": {
+                      "selector": {"matchLabels": {"app": name}},
+                      "template": {
+                          "metadata": {"labels": {"app": name}},
+                          "spec": {
+                              "tolerations": [{"operator": "Exists"}],
+                              "containers": [{"name": "img", "image": image, "command": ["sleep", "720h"]}],
+                          },
                       },
                   },
-              },
-          }
-          subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
+              }
+              subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
         env:
           PREPULL_IMAGES: ${{ matrix.prepull_images }}
 
@@ -311,51 +314,41 @@ jobs:
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
 
-      # The DaemonSet was created right after "Deploy stuff into Kubernetes"; by now it's had
-      # the Poetry/oc-login/test-variables setup's worth of wall-clock time to pull in the
-      # background, so this should return near-instantly. This is the actual guarantee that
-      # the images are cached before the robot test below tries to spawn a workbench with one.
+      # The DaemonSets were created right after "Deploy stuff into Kubernetes"; by now they've
+      # had the Poetry/oc-login/test-variables setup's worth of wall-clock time to pull in the
+      # background, so this should return quickly. This is the actual guarantee that the
+      # images are cached before the robot test below tries to spawn a workbench with one.
       #
       # `kubectl rollout status` only reports pod-count-level state (how many nodes have the
-      # pod, how many are Available) - with one node and one pod holding all N images as
-      # sibling containers, that flips straight from 0 to 1 the moment every container is
-      # Ready, so on its own this step would print nothing for the entire wait and then either
-      # succeed or time out with zero indication of which image was slow. Stream the pod's own
-      # events (Pulling/Pulled per container) in the background for actual visibility.
+      # pod, how many are Available) - it wouldn't otherwise print anything for the whole wait.
+      # Stream kube-system's events (Pulling/Pulled per pod) in the background for visibility,
+      # and print elapsed time to compare against the old single-pod/sequential-containers
+      # approach.
       - name: Wait for matrix-specified image-puller DaemonSet to be ready
         if: matrix.prepull_images
         shell: python {0}
         # language: python
         run: |
+          import os
           import subprocess
           import time
 
-          pod = ""
-          for _ in range(30):
-              result = subprocess.run(
-                  ["kubectl", "get", "pods", "-n", "kube-system", "-l", "app=image-puller-prepull",
-                   "-o", "jsonpath={.items[0].metadata.name}"],
-                  capture_output=True, text=True,
-              )
-              pod = result.stdout.strip()
-              if pod:
-                  break
-              time.sleep(1)
+          images = os.environ["PREPULL_IMAGES"].split()
+          names = [f"image-puller-prepull-{i}" for i in range(len(images))]
 
-          watcher = None
-          if pod:
-              watcher = subprocess.Popen([
-                  "kubectl", "get", "events", "-n", "kube-system",
-                  f"--field-selector=involvedObject.name={pod}", "--watch",
-              ])
+          watcher = subprocess.Popen(["kubectl", "get", "events", "-n", "kube-system", "--watch"])
+          start = time.time()
           try:
-              subprocess.run([
-                  "kubectl", "rollout", "status", "daemonset/image-puller-prepull",
-                  "-n", "kube-system", "--timeout=600s",
-              ], check=True)
+              for name in names:
+                  subprocess.run(
+                      ["kubectl", "rollout", "status", f"daemonset/{name}", "-n", "kube-system", "--timeout=600s"],
+                      check=True,
+                  )
+              print(f"all {len(names)} image-puller DaemonSets ready after {time.time() - start:.1f}s")
           finally:
-              if watcher:
-                  watcher.terminate()
+              watcher.terminate()
+        env:
+          PREPULL_IMAGES: ${{ matrix.prepull_images }}
 
       # NOTE: Tests in ods-ci often depend on what's before them in the file, so it's best to run file-by-file
       - name: Run ods-ci tests
