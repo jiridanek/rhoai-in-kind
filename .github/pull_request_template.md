@@ -21,21 +21,15 @@ non-obvious gotcha found along the way. -->
 <details>
 <summary>Plan</summary>
 
-The approved plan for this change goes here.
+<!-- The approved plan for this change goes here. -->
 
 </details>
 
 <details>
 <summary>Trajectory</summary>
 
-The full trajectory goes here — every step of investigating, implementing, and testing the
-fix, including dead ends and reverted approaches, in full and unabridged. Do not summarize
-or omit steps as "not notable."
+<!-- The full trajectory goes here — every step of investigating, implementing, and testing
+the fix, including dead ends and reverted approaches, in full and unabridged. Do not
+summarize or omit steps as "not notable." -->
 
 </details>
-
----
-
-- [ ] Tests run locally
-- [ ] No unrelated changes bundled in
-- [ ] Commit messages describe the why
