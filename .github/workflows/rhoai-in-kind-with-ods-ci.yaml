@@ -14,7 +14,7 @@ permissions: {}
 jobs:
   rhoai-in-kind:
     name: >-
-      rhoai-in-kind (${{ env.WORKBENCH_BRANCH }}, ${{ matrix.test_case }}${{ matrix.artifact_suffix && format(' [{0}]', matrix.artifact_suffix) || '' }})
+      rhoai-in-kind (${{ matrix.test_case }}${{ matrix.artifact_suffix && format(' [{0}]', matrix.artifact_suffix) || '' }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
