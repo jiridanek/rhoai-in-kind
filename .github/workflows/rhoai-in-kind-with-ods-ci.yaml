@@ -191,32 +191,36 @@ jobs:
       # finished waiting (or already failed).
       # CAUTION: the image tag is likely to go out of date, try to keep in sync
       - name: Pre-pull istio image via image-puller DaemonSet
+        shell: python {0}
+        # language: python
         run: |
-          set -Eeuxo pipefail
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: DaemonSet
-          metadata:
-            name: image-puller-istio
-            namespace: kube-system
-            labels:
-              app: image-puller-istio
-          spec:
-            selector:
-              matchLabels:
-                app: image-puller-istio
-            template:
-              metadata:
-                labels:
-                  app: image-puller-istio
-              spec:
-                tolerations:
-                  - operator: Exists
-                containers:
-                  - name: istio-pilot
-                    image: docker.io/istio/pilot:1.25.1
-                    command: ["sleep", "720h"]
-          EOF
+          import json
+          import subprocess
+
+          manifest = {
+              "apiVersion": "apps/v1",
+              "kind": "DaemonSet",
+              "metadata": {
+                  "name": "image-puller-istio",
+                  "namespace": "kube-system",
+                  "labels": {"app": "image-puller-istio"},
+              },
+              "spec": {
+                  "selector": {"matchLabels": {"app": "image-puller-istio"}},
+                  "template": {
+                      "metadata": {"labels": {"app": "image-puller-istio"}},
+                      "spec": {
+                          "tolerations": [{"operator": "Exists"}],
+                          "containers": [{
+                              "name": "istio-pilot",
+                              "image": "docker.io/istio/pilot:1.25.1",
+                              "command": ["sleep", "720h"],
+                          }],
+                      },
+                  },
+              },
+          }
+          subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
 
       - name: Wait for istio image-puller DaemonSet to be ready
         run: kubectl rollout status daemonset/image-puller-istio -n kube-system --timeout=600s
@@ -244,38 +248,40 @@ jobs:
       # matter; not competing with deploy.py's own pulls at all is simpler and sufficient.
       - name: Pre-pull matrix-specified images via image-puller DaemonSet
         if: matrix.prepull_images
+        shell: python {0}
+        # language: python
         run: |
-          set -Eeuxo pipefail
-          containers=""
-          i=0
-          for image in ${{ matrix.prepull_images }}; do
-            containers="${containers}
-                  - name: img-${i}
-                    image: \"${image}\"
-                    command: [\"sleep\", \"720h\"]"
-            i=$((i + 1))
-          done
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: DaemonSet
-          metadata:
-            name: image-puller-prepull
-            namespace: kube-system
-            labels:
-              app: image-puller-prepull
-          spec:
-            selector:
-              matchLabels:
-                app: image-puller-prepull
-            template:
-              metadata:
-                labels:
-                  app: image-puller-prepull
-              spec:
-                tolerations:
-                  - operator: Exists
-                containers:${containers}
-          EOF
+          import json
+          import os
+          import subprocess
+
+          images = os.environ["PREPULL_IMAGES"].split()
+          containers = [
+              {"name": f"img-{i}", "image": image, "command": ["sleep", "720h"]}
+              for i, image in enumerate(images)
+          ]
+          manifest = {
+              "apiVersion": "apps/v1",
+              "kind": "DaemonSet",
+              "metadata": {
+                  "name": "image-puller-prepull",
+                  "namespace": "kube-system",
+                  "labels": {"app": "image-puller-prepull"},
+              },
+              "spec": {
+                  "selector": {"matchLabels": {"app": "image-puller-prepull"}},
+                  "template": {
+                      "metadata": {"labels": {"app": "image-puller-prepull"}},
+                      "spec": {
+                          "tolerations": [{"operator": "Exists"}],
+                          "containers": containers,
+                      },
+                  },
+              },
+          }
+          subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
+        env:
+          PREPULL_IMAGES: ${{ matrix.prepull_images }}
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
@@ -318,20 +324,38 @@ jobs:
       # events (Pulling/Pulled per container) in the background for actual visibility.
       - name: Wait for matrix-specified image-puller DaemonSet to be ready
         if: matrix.prepull_images
+        shell: python {0}
+        # language: python
         run: |
-          set -Eeuxo pipefail
-          pod=""
-          for _ in $(seq 1 30); do
-            pod="$(kubectl get pods -n kube-system -l app=image-puller-prepull -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-            [ -n "$pod" ] && break
-            sleep 1
-          done
-          if [ -n "$pod" ]; then
-            kubectl get events -n kube-system --field-selector "involvedObject.name=${pod}" --watch &
-            watch_pid=$!
-            trap 'kill "$watch_pid" 2>/dev/null || true' EXIT
-          fi
-          kubectl rollout status daemonset/image-puller-prepull -n kube-system --timeout=600s
+          import subprocess
+          import time
+
+          pod = ""
+          for _ in range(30):
+              result = subprocess.run(
+                  ["kubectl", "get", "pods", "-n", "kube-system", "-l", "app=image-puller-prepull",
+                   "-o", "jsonpath={.items[0].metadata.name}"],
+                  capture_output=True, text=True,
+              )
+              pod = result.stdout.strip()
+              if pod:
+                  break
+              time.sleep(1)
+
+          watcher = None
+          if pod:
+              watcher = subprocess.Popen([
+                  "kubectl", "get", "events", "-n", "kube-system",
+                  f"--field-selector=involvedObject.name={pod}", "--watch",
+              ])
+          try:
+              subprocess.run([
+                  "kubectl", "rollout", "status", "daemonset/image-puller-prepull",
+                  "-n", "kube-system", "--timeout=600s",
+              ], check=True)
+          finally:
+              if watcher:
+                  watcher.terminate()
 
       # NOTE: Tests in ods-ci often depend on what's before them in the file, so it's best to run file-by-file
       - name: Run ods-ci tests
