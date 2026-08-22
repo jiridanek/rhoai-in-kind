@@ -17,7 +17,7 @@ nodes:
       - |
         kind: KubeletConfiguration
         serializeImagePulls: false
-        maxParallelImagePulls: 3
+        maxParallelImagePulls: 6
     extraPortMappings:
       - containerPort: 30207
         hostPort: 15021
