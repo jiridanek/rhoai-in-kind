@@ -1,3 +1,5 @@
+name: cypress
+
 on:
   pull_request:
   # only main: a same-repo branch PR otherwise triggers this twice (push + pull_request). See #46
