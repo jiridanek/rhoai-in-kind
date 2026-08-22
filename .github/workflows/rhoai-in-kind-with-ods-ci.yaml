@@ -225,31 +225,27 @@ jobs:
       - name: Wait for istio image-puller DaemonSet to be ready
         run: kubectl rollout status daemonset/image-puller-istio -n kube-system --timeout=600s
 
-      - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
-
       # Same in-cluster image-puller mechanism as above, for images a matrix entry declares via
       # `prepull_images` (large workbench/runtime images that can otherwise cold-pull slowly
       # enough under CI I/O load to blow a robot test's fixed spawn timeout - see issue #67).
       # No-op for entries without prepull_images. Only creates the DaemonSet here - the
       # blocking wait for it happens later, right before "Run ods-ci tests", so the pull runs
-      # in the background, overlapping with the rest of this job's setup (Poetry, oc login)
-      # instead of costing extra wall-clock time on top of it.
+      # in the background, overlapping with the rest of this job's setup (deploy.py, Poetry,
+      # oc login) instead of costing extra wall-clock time on top of it.
       #
-      # Deliberately placed *after* "Deploy stuff into Kubernetes", not before it like the
-      # istio pre-pull: cert-manager/ArgoCD/Kyverno's own image pulls are on deploy.py's
-      # critical path (it blocks on their readiness), and this DaemonSet's ~35GB of large
-      # images pulling concurrently starved those small, normally-instant pulls badly enough
-      # that deploy.py's `kubectl wait ... cert-manager` timed out after 5 minutes with the
-      # images still stuck in ContainerCreating - see PR #72 CI run 32532246937. Kubernetes
-      # has no pull-priority mechanism that would let this stay ahead of that queue and not
-      # matter; not competing with deploy.py's own pulls at all is simpler and sufficient.
+      # Placed *before* "Deploy stuff into Kubernetes", same as the istio pre-pull above: this
+      # used to run after deploy.py instead, because with kubelet's default one-pull-at-a-time
+      # FIFO queue, this DaemonSet's ~35GB of large images pulling concurrently starved
+      # cert-manager/ArgoCD/Kyverno's own small, normally-instant pulls badly enough that
+      # deploy.py's `kubectl wait ... cert-manager` timed out after 5 minutes - see PR #72 CI
+      # run 32532246937. Now that components/00-kind-cluster.yaml sets
+      # maxParallelImagePulls: 6, deploy.py's small pulls can get a concurrent slot instead of
+      # queuing strictly behind these, so pre-pulling can start immediately and overlap with
+      # deploy.py's own runtime too.
       # One DaemonSet per image, not one DaemonSet with N sibling containers: kubelet's pod
       # worker starts a single pod's own containers sequentially regardless of the node's
       # maxParallelImagePulls setting (see components/00-kind-cluster.yaml) - that setting only
-      # allows concurrency *across* pods. Separate pods actually let up to 3 of these pulls run
+      # allows concurrency *across* pods. Separate pods actually let multiple of these pulls run
       # at once instead of strictly one-at-a-time.
       - name: Pre-pull matrix-specified images via image-puller DaemonSet
         if: matrix.prepull_images
@@ -286,6 +282,11 @@ jobs:
         env:
           PREPULL_IMAGES: ${{ matrix.prepull_images }}
 
+      - name: Deploy stuff into Kubernetes
+        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
+        env:
+          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
       - name: Install Poetry
@@ -314,10 +315,11 @@ jobs:
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
 
-      # The DaemonSets were created right after "Deploy stuff into Kubernetes"; by now they've
-      # had the Poetry/oc-login/test-variables setup's worth of wall-clock time to pull in the
-      # background, so this should return quickly. This is the actual guarantee that the
-      # images are cached before the robot test below tries to spawn a workbench with one.
+      # The DaemonSets were created right before "Deploy stuff into Kubernetes"; by now they've
+      # had deploy.py's own runtime plus the Poetry/oc-login/test-variables setup's worth of
+      # wall-clock time to pull in the background, so this should return quickly. This is the
+      # actual guarantee that the images are cached before the robot test below tries to spawn
+      # a workbench with one.
       #
       # `kubectl rollout status` only reports pod-count-level state (how many nodes have the
       # pod, how many are Available) - it wouldn't otherwise print anything for the whole wait.
