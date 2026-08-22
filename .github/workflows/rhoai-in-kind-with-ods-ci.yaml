@@ -24,6 +24,14 @@ jobs:
       # duplicated anyway rather than getting an automatic cross-product - so there's no
       # benefit to carrying it as a per-entry field. Bump this single value when needed.
       WORKBENCH_BRANCH: v1.36.0
+      # The actual quay.io image tag for WORKBENCH_BRANCH's workbench/runtime images - related
+      # but distinct from the branch ref above (kustomize checkout ref vs. registry tag) and not
+      # mechanically derivable from it (re-derive both from a fresh run's cluster-logs when
+      # bumping, per the CAUTION comment below), so kept as its own constant. matrix.include
+      # entries can't reference the env context directly (same restriction that keeps this out
+      # of the job name above), so each prepull_images entry uses the literal placeholder "TAG"
+      # instead, substituted at runtime in the pre-pull steps' Python.
+      NOTEBOOK_IMAGE_TAG: 2025b-v1.36
 
     strategy:
       fail-fast: false
@@ -39,34 +47,37 @@ jobs:
         # cluster-logs artifact from a full matrix run (32538812359), not by reading test source -
         # by the time cluster-logs is collected the workbench pod is often already torn down, so
         # eventss.yaml (which retains pull events after pod deletion) is the reliable source.
-        # CAUTION: 2025b-v1.36-tagged images are pinned to the job's WORKBENCH_BRANCH env above;
-        # keep in sync if that version bumps - re-derive from a fresh run's cluster-logs rather
-        # than guessing, since the notebooks repo's own manifests/base kustomize still has
-        # unresolved "-n_PLACEHOLDER" build-time placeholders for the current (n) image tags.
+        # CAUTION: entries using the "TAG" placeholder (substituted at runtime from
+        # env.NOTEBOOK_IMAGE_TAG) are pinned to the job's WORKBENCH_BRANCH above; keep both in
+        # sync if that version bumps - re-derive from a fresh run's cluster-logs rather than
+        # guessing, since the notebooks repo's own manifests/base kustomize still has unresolved
+        # "-n_PLACEHOLDER" build-time placeholders for the current (n) image tags. Entries
+        # pinned by @sha256 digest (multiple-image-tags.robot) or a hardcoded unrelated tag
+        # (custom-image.robot) don't use the placeholder and are unaffected by either bump.
         include:
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-codeserver-datascience-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-codeserver-datascience-cpu-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:TAG
           # Not WORKBENCH_BRANCH-linked: this test imports a hardcoded custom/BYON image by URL
           # (see custom-image.robot's ${IMG_URL}), unrelated to the odh-notebooks release train.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
             prepull_images: quay.io/opendatahub/workbench-images:jupyter-minimal-ubi9-python-3.11-2024b-20241004
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:TAG
 
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:TAG
           # Iterates over last release's (n-1, py311) images specifically - digest-pinned since
           # that's how the notebooks repo's own params.env pins n-1, and there's no tag to track.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
@@ -79,17 +90,17 @@ jobs:
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           # Exercises 5 workbench image flavors in one file.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
             prepull_images: >-
-              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-minimal-cuda-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cuda-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:TAG
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:TAG
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
@@ -112,9 +123,9 @@ jobs:
             artifact_suffix: "sanity"
             extra_robot_args: "-i Sanity"
             prepull_images: >-
-              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:TAG
           # Test B (Tier1, templated over PyTorch/TensorFlow/TrustyAI images): fails because
           # the TrustyAI image's cold pull can take ~5 minutes under CI I/O load, blowing the
           # robot test's fixed 5-minute workbench-spawn timeout. See
@@ -143,25 +154,15 @@ jobs:
             artifact_suffix: "tier1"
             extra_robot_args: "-i Tier1"
             prepull_images: >-
-              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-trustyai-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
-              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
-              quay.io/fedora/mariadb-103:latest
-              quay.io/opendatahub/ds-pipelines-api-server@sha256:b5b9d057d7551ac184a6491b393d32e2e3ac2a9696697e25a64429fc4f4ed046
-              quay.io/opendatahub/ds-pipelines-persistenceagent@sha256:4b8316a8878c0d36b8d2297ed9f273fb0e6ffe0433fa24e908686a6f0888f919
-              quay.io/opendatahub/ds-pipelines-scheduledworkflow@sha256:80be2933c89ab9639c2ad189dfaf7a0566e22487d08ad5983197e6d4433692ce
-              quay.io/opendatahub/ds-pipelines-argo-workflowcontroller@sha256:995f06328569b558d63cf727c0674df71b1927f74ab60e966596ccb8c06e12f8
-              quay.io/opendatahub/ds-pipelines-argo-argoexec@sha256:da1b0d502ae97160185ec5debc2f0c8d54f70b01be4ea4a9339d7137cc3918a9
-              quay.io/opendatahub/ds-pipelines-driver@sha256:4fefd903a775916632f3eb59706ecbea902b1961bcb1e20e142b06672cebfd61
-              quay.io/opendatahub/ds-pipelines-launcher@sha256:48b68a2e888722021721e6f4c60e6a76eedd530b11df796b32fe04c8b01636d5
-              quay.io/opendatahub/ds-pipelines-runtime-generic@sha256:973ed0a2812215e0ed43817f70adf6a90ef808215186005c66d40b482eafc968
-              quay.io/opendatahub/mlmd-grpc-server@sha256:9e905b2de2fb6801716a14ebd6e589cac82fef26741825d06717d695a37ff199
+              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-trustyai-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
+              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:TAG
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
-            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:TAG
           # TODO: 9) error: the server doesn't have a resource type "group": 1 != 0
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/jupyterhub-user-access.robot"
 
@@ -299,28 +300,79 @@ jobs:
       - name: Wait for istio image-puller DaemonSet to be ready
         run: kubectl rollout status daemonset/image-puller-istio -n kube-system --timeout=600s
 
-      # Same in-cluster image-puller mechanism as above, for images a matrix entry declares via
-      # `prepull_images` (large workbench/runtime images that can otherwise cold-pull slowly
-      # enough under CI I/O load to blow a robot test's fixed spawn timeout - see issue #67).
-      # No-op for entries without prepull_images. Only creates the DaemonSet here - the
-      # blocking wait for it happens later, right before "Run ods-ci tests", so the pull runs
-      # in the background, overlapping with the rest of this job's setup (deploy.py, Poetry,
-      # oc login) instead of costing extra wall-clock time on top of it.
+      # Phase 1 of a two-phase pre-pull for images a matrix entry declares via `prepull_images`
+      # (large workbench/runtime images that can otherwise cold-pull slowly enough under CI I/O
+      # load to blow a robot test's fixed spawn timeout - see issue #67). No-op for entries
+      # without prepull_images.
       #
-      # Placed *before* "Deploy stuff into Kubernetes", same as the istio pre-pull above: this
-      # used to run after deploy.py instead, because with kubelet's default one-pull-at-a-time
-      # FIFO queue, this DaemonSet's ~35GB of large images pulling concurrently starved
-      # cert-manager/ArgoCD/Kyverno's own small, normally-instant pulls badly enough that
-      # deploy.py's `kubectl wait ... cert-manager` timed out after 5 minutes - see PR #72 CI
-      # run 32532246937. Now that components/00-kind-cluster.yaml sets
-      # maxParallelImagePulls: 6, deploy.py's small pulls can get a concurrent slot instead of
-      # queuing strictly behind these, so pre-pulling can start immediately and overlap with
-      # deploy.py's own runtime too.
-      # One DaemonSet per image, not one DaemonSet with N sibling containers: kubelet's pod
-      # worker starts a single pod's own containers sequentially regardless of the node's
-      # maxParallelImagePulls setting (see components/00-kind-cluster.yaml) - that setting only
-      # allows concurrency *across* pods. Separate pods actually let multiple of these pulls run
-      # at once instead of strictly one-at-a-time.
+      # This phase deliberately uses ONE DaemonSet with N sibling containers (the shape phase 2
+      # below avoids), fired-and-forgotten before "Deploy stuff into Kubernetes" with no wait
+      # step at all. That single-pod shape means kubelet's pod worker starts its containers
+      # strictly sequentially - so this phase only ever has *one* image pull in flight, occupying
+      # a single one of the node's maxParallelImagePulls admission slots (see
+      # components/00-kind-cluster.yaml) no matter how many images are listed. That's the whole
+      # point: deploy.py's own pulls (cert-manager, ArgoCD, Kyverno, ...) still get the rest of
+      # those slots immediately instead of queuing behind a burst of background pulls that all
+      # arrived first. Whatever this phase manages to pull during deploy.py's ~350s runtime is
+      # free - the images it doesn't get to in time are caught by phase 2 below.
+      #
+      # This was tried the other way first (one DaemonSet *per* image, fired before deploy.py,
+      # so all N pulls could race for maxParallelImagePulls slots at once): with tier1's image
+      # list that measured a 1-in-5 rate of deploy.py itself timing out - ArgoCD's own image took
+      # 4.5 minutes just to reach the front of the pull queue, eating almost all of its 180s
+      # `kubectl wait` budget before the pull had even started. See pulling_timings.md.
+      - name: Pre-pull matrix-specified images sequentially (best-effort, before deploy.py)
+        if: matrix.prepull_images
+        shell: python {0}
+        # language: python
+        run: |
+          import json
+          import os
+          import subprocess
+
+          images = os.environ["PREPULL_IMAGES"].replace("TAG", os.environ["NOTEBOOK_IMAGE_TAG"]).split()
+          name = "image-puller-prepull-sequential"
+          manifest = {
+              "apiVersion": "apps/v1",
+              "kind": "DaemonSet",
+              "metadata": {
+                  "name": name,
+                  "namespace": "kube-system",
+                  "labels": {"app": name},
+              },
+              "spec": {
+                  "selector": {"matchLabels": {"app": name}},
+                  "template": {
+                      "metadata": {"labels": {"app": name}},
+                      "spec": {
+                          "tolerations": [{"operator": "Exists"}],
+                          "containers": [
+                              {"name": f"img-{i}", "image": image, "command": ["sleep", "720h"]}
+                              for i, image in enumerate(images)
+                          ],
+                      },
+                  },
+              },
+          }
+          subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
+        env:
+          PREPULL_IMAGES: ${{ matrix.prepull_images }}
+          NOTEBOOK_IMAGE_TAG: ${{ env.NOTEBOOK_IMAGE_TAG }}
+
+      - name: Deploy stuff into Kubernetes
+        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
+        env:
+          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+
+      # Phase 2 of the two-phase pre-pull (see phase 1's comment above): one DaemonSet *per*
+      # image now, so up to maxParallelImagePulls of them can pull concurrently - safe here
+      # because deploy.py's own readiness waits are already done, so there's nothing left for
+      # these background pulls to starve. Re-requesting an image phase 1 already finished is a
+      # fast no-op (content-addressed image store reports it already present, no re-download);
+      # anything phase 1 hadn't reached yet gets its first real pull request here instead.
+      # Only creates the DaemonSets here - the blocking wait for them happens later, right
+      # before "Run ods-ci tests", so this still overlaps with Poetry/oc-login/test-variables
+      # instead of adding pure wall-clock time on top of them.
       - name: Pre-pull matrix-specified images via image-puller DaemonSet
         if: matrix.prepull_images
         shell: python {0}
@@ -330,7 +382,7 @@ jobs:
           import os
           import subprocess
 
-          images = os.environ["PREPULL_IMAGES"].split()
+          images = os.environ["PREPULL_IMAGES"].replace("TAG", os.environ["NOTEBOOK_IMAGE_TAG"]).split()
           for i, image in enumerate(images):
               name = f"image-puller-prepull-{i}"
               manifest = {
@@ -355,11 +407,7 @@ jobs:
               subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
         env:
           PREPULL_IMAGES: ${{ matrix.prepull_images }}
-
-      - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+          NOTEBOOK_IMAGE_TAG: ${{ env.NOTEBOOK_IMAGE_TAG }}
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
@@ -389,11 +437,13 @@ jobs:
       - name: Prepare test-variables.yml
         run: mv components/ods-ci/test-variables.yml ods-ci/ods_ci/test-variables.yml
 
-      # The DaemonSets were created right before "Deploy stuff into Kubernetes"; by now they've
-      # had deploy.py's own runtime plus the Poetry/oc-login/test-variables setup's worth of
-      # wall-clock time to pull in the background, so this should return quickly. This is the
-      # actual guarantee that the images are cached before the robot test below tries to spawn
-      # a workbench with one.
+      # Blocks on phase 2's per-image DaemonSets only (created right after "Deploy stuff into
+      # Kubernetes"); by now they've had the Poetry/oc-login/test-variables setup's worth of
+      # wall-clock time to pull in the background on top of that, so this should return quickly.
+      # Phase 1's sequential DaemonSet (fired-and-forgotten before deploy.py) is never waited on
+      # directly - whatever it already pulled just makes phase 2's requests for the same images
+      # instant no-ops. This step is the actual guarantee that every image is cached before the
+      # robot test below tries to spawn a workbench with one.
       #
       # `kubectl rollout status` only reports pod-count-level state (how many nodes have the
       # pod, how many are Available) - it wouldn't otherwise print anything for the whole wait.
