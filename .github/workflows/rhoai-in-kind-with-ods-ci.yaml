@@ -32,24 +32,62 @@ jobs:
       # include entry into a generated combination when its keys match *all* axes - ambiguous
       # and easy to get wrong once entries need heterogeneous optional fields.
       matrix:
+        # prepull_images below were discovered the same way as the elyra entries further down:
+        # by reading the actual pod specs / events (podss.yaml, eventss.yaml) in each job's own
+        # cluster-logs artifact from a full matrix run (32538812359), not by reading test source -
+        # by the time cluster-logs is collected the workbench pod is often already torn down, so
+        # eventss.yaml (which retains pull events after pod deletion) is the reliable source.
+        # CAUTION: 2025b-v1.36-tagged images are pinned to the job's WORKBENCH_BRANCH env above;
+        # keep in sync if that version bumps - re-derive from a fresh run's cluster-logs rather
+        # than guessing, since the notebooks repo's own manifests/base kustomize still has
+        # unresolved "-n_PLACEHOLDER" build-time placeholders for the current (n) image tags.
         include:
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-minimal-image.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-vscode-test.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-codeserver-datascience-cpu-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-pytorch-test.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/minimal-tensorflow-test.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
+          # Not WORKBENCH_BRANCH-linked: this test imports a hardcoded custom/BYON image by URL
+          # (see custom-image.robot's ${IMG_URL}), unrelated to the odh-notebooks release train.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/custom-image.robot"
+            prepull_images: quay.io/opendatahub/workbench-images:jupyter-minimal-ubi9-python-3.11-2024b-20241004
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/networkpolicy-test.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-pipChanges-not-permanent.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-git-notebook.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
 
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/image-iteration.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/long-running-test-generic-ds.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+          # Iterates over last release's (n-1, py311) images specifically - digest-pinned since
+          # that's how the notebooks repo's own params.env pins n-1, and there's no tag to track.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/multiple-image-tags.robot"
+            prepull_images: >-
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py311-ubi9@sha256:45ec6fc94d5f0eb1efff548687f4beacb2f5c4a1bef78a38b9475e1583536d7d
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cuda-py311-ubi9@sha256:b23028134c94c2392a74b89e62dc7f2b5223b15e1c1fb691c6c39a36a4149ee5
+              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py311-ubi9@sha256:97ac518d5982f0ad438b6c33f36162715be651fb4dbe1a80f972712997c0de22
+              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py311-ubi9@sha256:b9245c43060321b3cb8261fee538765e1debe43e5546103fa30a7c61fdaec032
+              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py311-ubi9@sha256:9e40b024480c35d5c67114528ff28a87ff96add636bfdf9801099f581f53157e
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test.robot"
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-filling-pvc.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+          # Exercises 5 workbench image flavors in one file.
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-folder-permissions.robot"
+            prepull_images: >-
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cuda-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-flask-notebook.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
           # TODO: Executing keyword 'Login To Openshift' failed
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/test-jupyterlab-notebook.robot"
           # TODO: Executing keyword 'Login To Openshift' failed
@@ -66,10 +104,15 @@ jobs:
           # whole file) so each can carry its own prepull_images/extra_robot_args. Both share
           # this file's Suite Setup/Teardown, so each entry re-runs that (~1-2min extra, ok).
           #
-          # Test A (Sanity, single image) already passes reliably - no pre-pull needed.
+          # Test A (Sanity, single image) already passes reliably, but pre-pull anyway since
+          # it's free and keeps this entry consistent with the rest of the matrix.
           - test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
             artifact_suffix: "sanity"
             extra_robot_args: "-i Sanity"
+            prepull_images: >-
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
           # Test B (Tier1, templated over PyTorch/TensorFlow/TrustyAI images): fails because
           # the TrustyAI image's cold pull can take ~5 minutes under CI I/O load, blowing the
           # robot test's fixed 5-minute workbench-spawn timeout. See
@@ -116,6 +159,7 @@ jobs:
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
+            prepull_images: quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
           # TODO: 9) error: the server doesn't have a resource type "group": 1 != 0
           #- "tests/Tests/0500__ide/0501__ide_jupyterhub/jupyterhub-user-access.robot"
 
