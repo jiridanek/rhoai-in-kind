@@ -79,12 +79,15 @@ jobs:
       # ✘ Istiod encountered an error: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
       #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")Error: failed to install manifests: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
       #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")
-      # CAUTION: the image tag is likely to go out of date, try to keep in sync
+      # CAUTION: must match ISTIO_VERSION in components/deploy.py - it drifted to 1.25.1 here
+      # while deploy.py had already moved to 1.26.2, silently making this pre-pull a no-op for
+      # the version istiod actually needs. No automated check ties these together; if this ever
+      # drifts again, `istioctl install` will still work, just without the pre-pull benefit.
       - name: Pre-pull istio inside kind cluster
         run: |
           set -Eeuxo pipefail
-          timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.25.1; do sleep 1; done'
-          kind load docker-image docker.io/istio/pilot:1.25.1
+          timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.26.2; do sleep 1; done'
+          kind load docker-image docker.io/istio/pilot:1.26.2
 
       - name: Deploy stuff into Kubernetes
         run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}

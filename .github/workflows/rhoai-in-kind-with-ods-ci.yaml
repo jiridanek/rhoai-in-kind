@@ -264,7 +264,10 @@ jobs:
       # placed after that one (as this used to be) cannot help the failure above at all: GitHub
       # Actions steps never overlap, so by the time a later step starts, istioctl has already
       # finished waiting (or already failed).
-      # CAUTION: the image tag is likely to go out of date, try to keep in sync
+      # CAUTION: must match ISTIO_VERSION in components/deploy.py - it drifted to 1.25.1 here
+      # while deploy.py had already moved to 1.26.2, silently making this pre-pull a no-op for
+      # the version istiod actually needs. No automated check ties these together; if this ever
+      # drifts again, `istioctl install` will still work, just without the pre-pull benefit.
       - name: Pre-pull istio image via image-puller DaemonSet
         shell: python {0}
         # language: python
@@ -288,7 +291,7 @@ jobs:
                           "tolerations": [{"operator": "Exists"}],
                           "containers": [{
                               "name": "istio-pilot",
-                              "image": "docker.io/istio/pilot:1.25.1",
+                              "image": "docker.io/istio/pilot:1.26.2",
                               "command": ["sleep", "720h"],
                           }],
                       },
