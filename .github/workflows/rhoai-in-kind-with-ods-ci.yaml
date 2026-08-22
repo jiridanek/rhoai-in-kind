@@ -77,6 +77,23 @@ jobs:
           # image-puller DaemonSet steps below (see their comments for the RHOAIENG-56335 /
           # che-incubator/kubernetes-image-puller background).
           # CAUTION: image tags are pinned to the job's WORKBENCH_BRANCH env above; keep in sync.
+          #
+          # The DSPA (Data Science Pipelines Application) this test spins up is per-project and
+          # created fresh by the robot test's own Suite Setup ("Create Pipeline Server"), not by
+          # deploy.py, so its whole control-plane stack + DB backend also cold-pulls during the
+          # test run, on top of the 3 workbench images + runtime image above. Found by reading
+          # the actual pod specs (podss.yaml) in a passing run's cluster-logs artifact - none of
+          # this shows up in the job's own console log, since the pre-pull wait step's event
+          # watcher is scoped to kube-system, not the per-test elyra-test-NNNN namespace.
+          # These control-plane images are individually small (tens/hundreds of MB, single-digit
+          # seconds each) so they aren't a timeout risk the way the multi-GB workbench images
+          # are, but pre-pulling them is free and removes them from the Suite Setup critical path
+          # too. Digests are pinned by DSPO's own default image config (DSPO v2.15.1 per
+          # dspo-version-pin-baseline) - keep in sync if DSPO's version pin changes.
+          # (quay.io/jdanek/origin-oauth-proxy and quay.io/maistra/proxyv2-ubi8 are deliberately
+          # NOT listed: both consistently pull in <1s in every run checked, since they're already
+          # resident on the node from deploy.py's own bootstrap - other components use the same
+          # oauth-proxy/istio-sidecar images well before this test starts.)
           - test_case: "tests/Tests/0500__ide/0502__ide_elyra.robot"
             artifact_suffix: "tier1"
             extra_robot_args: "-i Tier1"
@@ -84,7 +101,18 @@ jobs:
               quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
               quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
               quay.io/opendatahub/odh-workbench-jupyter-trustyai-cpu-py312-ubi9:2025b-v1.36
+              quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
               quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
+              quay.io/fedora/mariadb-103:latest
+              quay.io/opendatahub/ds-pipelines-api-server@sha256:b5b9d057d7551ac184a6491b393d32e2e3ac2a9696697e25a64429fc4f4ed046
+              quay.io/opendatahub/ds-pipelines-persistenceagent@sha256:4b8316a8878c0d36b8d2297ed9f273fb0e6ffe0433fa24e908686a6f0888f919
+              quay.io/opendatahub/ds-pipelines-scheduledworkflow@sha256:80be2933c89ab9639c2ad189dfaf7a0566e22487d08ad5983197e6d4433692ce
+              quay.io/opendatahub/ds-pipelines-argo-workflowcontroller@sha256:995f06328569b558d63cf727c0674df71b1927f74ab60e966596ccb8c06e12f8
+              quay.io/opendatahub/ds-pipelines-argo-argoexec@sha256:da1b0d502ae97160185ec5debc2f0c8d54f70b01be4ea4a9339d7137cc3918a9
+              quay.io/opendatahub/ds-pipelines-driver@sha256:4fefd903a775916632f3eb59706ecbea902b1961bcb1e20e142b06672cebfd61
+              quay.io/opendatahub/ds-pipelines-launcher@sha256:48b68a2e888722021721e6f4c60e6a76eedd530b11df796b32fe04c8b01636d5
+              quay.io/opendatahub/ds-pipelines-runtime-generic@sha256:973ed0a2812215e0ed43817f70adf6a90ef808215186005c66d40b482eafc968
+              quay.io/opendatahub/mlmd-grpc-server@sha256:9e905b2de2fb6801716a14ebd6e589cac82fef26741825d06717d695a37ff199
 
           # my env does make everyone cluster-admin, so perms tests are meaningless
           - test_case: "tests/Tests/0500__ide/0501__ide_jupyterhub/base-user-shutdown-test.robot"
