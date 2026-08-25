@@ -70,7 +70,7 @@ jobs:
         id: kind-cluster
         uses: helm/kind-action@v1
         with:
-          version: v0.27.0
+          version: v0.32.0
           # Dashboard tests fail on k8s 1.32
           # https://hub.docker.com/r/kindest/node/tags
           node_image: "docker.io/kindest/node:v1.31.6"
