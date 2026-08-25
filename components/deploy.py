@@ -155,9 +155,18 @@ def main():
         # Establishing a CRD is asynchronous: `kubectl apply` returning just means the object was
         # accepted, not that the API server's discovery/RESTMapper already knows the resource type.
         # Querying too soon (e.g. the imagestreams clusterrole creation below) can 404 - confirmed
-        # in CI (~1s race window, issue #82). Wait for every CRD, not just imagestreams, since other
-        # steps later query Route/OAuthClient/DSC/DSCI from this same batch.
-        sh("kubectl wait --for=condition=Established crd --all --timeout=30s")
+        # in CI (~1s race window, issue #82).
+        #
+        # NOTE: `--all` (waiting on every CRD in the cluster) was tried here and reverted - it
+        # broke every CI run with `.status.conditions accessor error: <nil> is of the type <nil>,
+        # expected []interface{}`. A CRD just created by the `kubectl apply` above can momentarily
+        # have `.status.conditions: null` (not an empty list) before the apiextensions-apiserver
+        # controller populates it; kubectl's `--all` list-based check treats that as a fatal type
+        # error instead of retrying, unlike the single-resource watch-based wait used below, which
+        # tolerates it. Name only the CRD(s) actually queried immediately after this step -
+        # Route/OAuthClient/DSC/DSCI from this same batch aren't used until much later, with plenty
+        # of time for their own Established condition to settle.
+        sh("kubectl wait --for=condition=Established crd/imagestreams.image.openshift.io --timeout=30s")
 
     with gha_log_group("Deploy api-extension"):
         sh("kubectl apply -k components/api-extension")
