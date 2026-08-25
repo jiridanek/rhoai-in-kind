@@ -157,16 +157,25 @@ def main():
         # Querying too soon (e.g. the imagestreams clusterrole creation below) can 404 - confirmed
         # in CI (~1s race window, issue #82).
         #
-        # NOTE: `--all` (waiting on every CRD in the cluster) was tried here and reverted - it
-        # broke every CI run with `.status.conditions accessor error: <nil> is of the type <nil>,
-        # expected []interface{}`. A CRD just created by the `kubectl apply` above can momentarily
-        # have `.status.conditions: null` (not an empty list) before the apiextensions-apiserver
-        # controller populates it; kubectl's `--all` list-based check treats that as a fatal type
-        # error instead of retrying, unlike the single-resource watch-based wait used below, which
-        # tolerates it. Name only the CRD(s) actually queried immediately after this step -
-        # Route/OAuthClient/DSC/DSCI from this same batch aren't used until much later, with plenty
-        # of time for their own Established condition to settle.
-        sh("kubectl wait --for=condition=Established crd/imagestreams.image.openshift.io --timeout=30s")
+        # A plain `kubectl wait --for=condition=Established` (with or without `--all`) is not
+        # reliable here: a CRD just created by the `kubectl apply` above can momentarily have
+        # `.status.conditions: null` (not an empty list, not an absent field) before the
+        # apiextensions-apiserver controller populates it - confirmed in CI, both with `--all` and
+        # with a single named CRD. kubectl's condition accessor treats an explicit `null` as a
+        # fatal type error (`.status.conditions accessor error: <nil> is of the type <nil>,
+        # expected []interface{}`) and exits immediately, without ever retrying via its usual
+        # watch. This is a known, still-unfixed class of bug in kubectl's condition accessor - see
+        # https://github.com/kubernetes/kubernetes/issues/66439 (closed stale, never fixed) and
+        # downstream reports of the identical message hitting the same "just-created, status not
+        # yet populated" case: https://github.com/strimzi/strimzi-kafka-operator/issues/4737,
+        # https://github.com/infinispan/infinispan-operator/issues/187. Both resolve it the same
+        # way we do here: retry/poll on the caller side instead of trusting `kubectl wait` to
+        # tolerate a not-yet-populated status. Wrap it in our own retry loop - only
+        # imagestreams.image.openshift.io is queried immediately after this step;
+        # Route/OAuthClient/DSC/DSCI from this same batch aren't used until much later, with
+        # plenty of time for their own Established condition to
+        # settle.
+        sh("timeout 30s bash -c 'until kubectl wait --for=condition=Established crd/imagestreams.image.openshift.io --timeout=5s; do sleep 1; done'")
 
     with gha_log_group("Deploy api-extension"):
         sh("kubectl apply -k components/api-extension")
