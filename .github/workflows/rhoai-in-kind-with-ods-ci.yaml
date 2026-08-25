@@ -178,9 +178,9 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: red-hat-data-services/ods-ci
           # Track the rhoai-2.25 stable line to match our pinned deployment (workbench v1.36.0,
@@ -191,7 +191,7 @@ jobs:
 
       # Otherwise we may end up with a random Python version?
       # https://github.com/jiridanek/rhoai-in-kind/issues/16
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: setup-python
         with:
           python-version: '3.13'
@@ -420,7 +420,7 @@ jobs:
           pipx install poetry
 
       - name: "Set up Python"
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: poetry
@@ -526,21 +526,21 @@ jobs:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: "steps.collect-logs.outputs.debug_bundle_dir != '' && !cancelled()"
         with:
           name: cluster-logs-${{ steps.artifact-name.outputs.artifact-name }}
           path: ${{ steps.collect-logs.outputs.debug_bundle_dir }}
 
       - name: Archive test-output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: "!cancelled()"
         with:
           name: test-output-${{ steps.artifact-name.outputs.artifact-name }}
           path: ods-ci/ods_ci/test-output
 
       - name: Archive chromedriver.log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: "!cancelled()"
         with:
           name: chromedriver-${{ steps.artifact-name.outputs.artifact-name }}
