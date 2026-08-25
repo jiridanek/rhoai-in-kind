@@ -40,9 +40,9 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: opendatahub-io/odh-dashboard
           # Match the deployed dashboard image (components/04-odh-dashboard.yaml). `main` drifted;
@@ -55,10 +55,11 @@ jobs:
 
       # Otherwise we may end up with a random Python version?
       # https://github.com/jiridanek/rhoai-in-kind/issues/16
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: setup-python
         with:
           python-version: '3.13'
+          pip-version: '26.2.1'
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
@@ -122,7 +123,7 @@ jobs:
 
       # https://pnpm.io/continuous-integration#github-actions
       - name: Use Node.js with npm caching
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20.x'
           cache: 'npm'
@@ -171,19 +172,19 @@ jobs:
         env:
           TEST_CASE: ${{ matrix.test_case }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: cypress-report-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/index.html
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: cypress-screenshots-${{ steps.artifact-name.outputs.artifact-name }}
           path: odh-dashboard/frontend/src/__tests__/cypress/results/e2e/screenshots
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: "!cancelled()"
         with:
           name: cypress-videos-${{ steps.artifact-name.outputs.artifact-name }}
@@ -208,7 +209,7 @@ jobs:
           PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: "steps.collect-logs.outputs.debug_bundle_dir != '' && !cancelled()"
         with:
           name: cluster-logs-${{ steps.artifact-name.outputs.artifact-name }}
