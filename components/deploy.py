@@ -152,6 +152,12 @@ def main():
 
     with gha_log_group("Deploy fake CRDs"):
         sh("kubectl apply -k components/crds")
+        # Establishing a CRD is asynchronous: `kubectl apply` returning just means the object was
+        # accepted, not that the API server's discovery/RESTMapper already knows the resource type.
+        # Querying too soon (e.g. the imagestreams clusterrole creation below) can 404 - confirmed
+        # in CI (~1s race window, issue #82). Wait for every CRD, not just imagestreams, since other
+        # steps later query Route/OAuthClient/DSC/DSCI from this same batch.
+        sh("kubectl wait --for=condition=Established crd --all --timeout=30s")
 
     with gha_log_group("Deploy api-extension"):
         sh("kubectl apply -k components/api-extension")
