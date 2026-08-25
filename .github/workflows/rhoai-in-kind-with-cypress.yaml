@@ -59,6 +59,7 @@ jobs:
         id: setup-python
         with:
           python-version: '3.13'
+          pip-version: '26.2.1'
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1

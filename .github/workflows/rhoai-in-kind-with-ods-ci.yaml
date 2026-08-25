@@ -195,6 +195,7 @@ jobs:
         id: setup-python
         with:
           python-version: '3.13'
+          pip-version: '26.2.1'
 
       # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
       - name: Relocate docker data dir
@@ -423,6 +424,7 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+          pip-version: "26.2.1"
           cache: poetry
           cache-dependency-path: "ods-ci/poetry.lock"
 
