@@ -26,9 +26,39 @@ from rhoai_in_kind import (
 REDHAT_ODS_APPLICATIONS = "redhat-ods-applications"
 RHODS_NOTEBOOKS = "rhods-notebooks"
 
-# Ceiling for the ArgoCD retry loops (`timeout <N> bash -c 'while ! argocd ...'`).
+# Ceiling for the ArgoCD login/readiness retry loops (`timeout <N> bash -c 'while ! argocd ...'`).
 # It is a retry budget, not a fixed wait: the loop exits as soon as the command succeeds.
-ARGOCD_TIMEOUT = "60s"
+# `argocd app sync` no longer uses this - see ARGOCD_SYNC_* below.
+ARGOCD_LOGIN_TIMEOUT = "60s"
+
+# Native argocd app sync retry knobs (v3.1.0+ actually honors these instead of hanging - see
+# https://github.com/argoproj/argo-cd/issues/21613, fixed by v3.1.0). --timeout bounds the CLI's
+# wait on an already-submitted sync Operation; --retry-limit/backoff govern the controller
+# retrying that Operation server-side (e.g. a CRD not yet Established). Neither covers a sync
+# request that fails synchronously before an Operation exists (the argocd-secret readiness race,
+# see the "Wait for ArgoCD application-controller readiness" step below) - that class is still
+# handled by that explicit wait, not by these flags.
+ARGOCD_SYNC_TIMEOUT = 180
+ARGOCD_SYNC_RETRY_LIMIT = 5
+ARGOCD_SYNC_RETRY_BACKOFF_DURATION = "5s"
+ARGOCD_SYNC_RETRY_BACKOFF_FACTOR = 2
+ARGOCD_SYNC_RETRY_BACKOFF_MAX_DURATION = "60s"
+
+
+def argocd_sync_cmd(app: str) -> str:
+    # Outer `timeout` is a hard kill-switch, not a retry loop: --timeout only wraps the post-
+    # submit wait, not the initial Sync RPC, so a pre-submit hang wouldn't be caught by it alone.
+    # Sized above the inner --timeout so the inner one should fire first with argocd's own
+    # diagnostic error; the outer one firing instead (exit 124) is itself a signal something new
+    # and unexpected happened.
+    return (
+        f"timeout {ARGOCD_SYNC_TIMEOUT + 30}s argocd app sync {app} "
+        f"--timeout {ARGOCD_SYNC_TIMEOUT} "
+        f"--retry-limit {ARGOCD_SYNC_RETRY_LIMIT} "
+        f"--retry-backoff-duration {ARGOCD_SYNC_RETRY_BACKOFF_DURATION} "
+        f"--retry-backoff-factor {ARGOCD_SYNC_RETRY_BACKOFF_FACTOR} "
+        f"--retry-backoff-max-duration {ARGOCD_SYNC_RETRY_BACKOFF_MAX_DURATION}"
+    )
 
 
 def main():
@@ -62,7 +92,7 @@ def main():
 
     if "CI" in os.environ:
         with gha_log_group("Install ArgoCD CLI"):
-            ARGOCD_VERSION = "v3.0.6"
+            ARGOCD_VERSION = "v3.5.1"
             sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-$(go env GOOS)-$(go env GOARCH)")
             sh(f"chmod +x /tmp/argocd-{ARGOCD_VERSION}")
             sh(f"sudo mv /tmp/argocd-{ARGOCD_VERSION} /usr/local/bin/argocd")
@@ -109,7 +139,14 @@ def main():
         sh("kubectl apply -f components/11-coredns.yaml")
 
     with gha_log_group("Install ArgoCD"):
-        sh("kubectl apply -k components/01-argocd")
+        # v3.5.1's applicationsets.argoproj.io CRD is too large for the
+        # kubectl.kubernetes.io/last-applied-configuration annotation client-side apply relies on
+        # ("metadata.annotations: Too long: must have at most 262144 bytes" - confirmed locally;
+        # v3.0.6's copy of the same CRD was just under the limit). --server-side avoids the
+        # annotation entirely (uses managedFields instead); --force-conflicts is needed because
+        # this is a first-time create with no prior field manager. Same fix upstream adopted for
+        # their own install docs: https://github.com/argoproj/argo-cd/pull/25538
+        sh("kubectl apply -k components/01-argocd --server-side --force-conflicts")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
 
@@ -240,7 +277,7 @@ def main():
         # load (mux: server closed). https://github.com/jiridanek/rhoai-in-kind/issues/40
         # `set +x` in the inner shell keeps the admin password out of the `set -x` trace.
         sh(
-            f"""timeout {ARGOCD_TIMEOUT} bash -c '
+            f"""timeout {ARGOCD_LOGIN_TIMEOUT} bash -c '
                 set +x
                 pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{{.data.password}}" | base64 --decode)
                 while ! argocd login argocd.apps.127.0.0.1.sslip.io --username admin --password "$pw" --grpc-web --insecure; do sleep 2; done
@@ -261,9 +298,9 @@ def main():
         # is missing" - confirmed in CI: the *first* app synced (kf-pipelines) usually clears
         # this race by luck (more wall-clock time has passed by the time it runs), but the
         # *second* one (odh-dashboard) can land squarely inside the window and burn its whole
-        # ARGOCD_TIMEOUT retrying a sync that can never succeed until this key exists.
+        # ARGOCD_LOGIN_TIMEOUT retrying a sync that can never succeed until this key exists.
         sh(
-            f"""timeout {ARGOCD_TIMEOUT} bash -c '
+            f"""timeout {ARGOCD_LOGIN_TIMEOUT} bash -c '
                 while [ -z "$(kubectl -n argocd get secret argocd-secret -o jsonpath="{{.data.server\\.secretkey}}" 2>/dev/null)" ]; do sleep 1; done
             '"""
         )
@@ -273,7 +310,7 @@ def main():
         # dspa is looking up configmaps in this namespace
         # sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
 
-        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd app sync kf-pipelines; do sleep 1; done'")
+        sh(argocd_sync_cmd("kf-pipelines"))
 
         # wait for argocd to sync the application
         # wait for deployment as it is more robust
@@ -376,7 +413,7 @@ def main():
 
     with gha_log_group("Install ODH Dashboard"):
         # was getting a CRD missing error, somehow argo was not waiting to establish OdhDocument?
-        sh(f"timeout {ARGOCD_TIMEOUT} bash -c 'while ! argocd app sync odh-dashboard; do sleep 1; done'")
+        sh(argocd_sync_cmd("odh-dashboard"))
         tf.defer(None, lambda _: sh(
             f"kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n {REDHAT_ODS_APPLICATIONS} --timeout=120s"))
         # wait for webpage availability
