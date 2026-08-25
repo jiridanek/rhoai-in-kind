@@ -155,9 +155,27 @@ def main():
         # Establishing a CRD is asynchronous: `kubectl apply` returning just means the object was
         # accepted, not that the API server's discovery/RESTMapper already knows the resource type.
         # Querying too soon (e.g. the imagestreams clusterrole creation below) can 404 - confirmed
-        # in CI (~1s race window, issue #82). Wait for every CRD, not just imagestreams, since other
-        # steps later query Route/OAuthClient/DSC/DSCI from this same batch.
-        sh("kubectl wait --for=condition=Established crd --all --timeout=30s")
+        # in CI (~1s race window, issue #82).
+        #
+        # A plain `kubectl wait --for=condition=Established` (with or without `--all`) is not
+        # reliable here: a CRD just created by the `kubectl apply` above can momentarily have
+        # `.status.conditions: null` (not an empty list, not an absent field) before the
+        # apiextensions-apiserver controller populates it - confirmed in CI, both with `--all` and
+        # with a single named CRD. kubectl's condition accessor treats an explicit `null` as a
+        # fatal type error (`.status.conditions accessor error: <nil> is of the type <nil>,
+        # expected []interface{}`) and exits immediately, without ever retrying via its usual
+        # watch. This is a known, still-unfixed class of bug in kubectl's condition accessor - see
+        # https://github.com/kubernetes/kubernetes/issues/66439 (closed stale, never fixed) and
+        # downstream reports of the identical message hitting the same "just-created, status not
+        # yet populated" case: https://github.com/strimzi/strimzi-kafka-operator/issues/4737,
+        # https://github.com/infinispan/infinispan-operator/issues/187. Both resolve it the same
+        # way we do here: retry/poll on the caller side instead of trusting `kubectl wait` to
+        # tolerate a not-yet-populated status. Wrap it in our own retry loop - only
+        # imagestreams.image.openshift.io is queried immediately after this step;
+        # Route/OAuthClient/DSC/DSCI from this same batch aren't used until much later, with
+        # plenty of time for their own Established condition to
+        # settle.
+        sh("timeout 30s bash -c 'until kubectl wait --for=condition=Established crd/imagestreams.image.openshift.io --timeout=5s; do sleep 1; done'")
 
     with gha_log_group("Deploy api-extension"):
         sh("kubectl apply -k components/api-extension")
