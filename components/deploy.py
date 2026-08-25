@@ -370,17 +370,18 @@ def main():
         # need status for dashboard resource otherwise notebook controller will not fill dashboard link for dspa secret
         sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side --subresource=status || true")
 
-    with gha_log_group("Install local-path provisioner"):
-        sh("kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.33/deploy/local-path-storage.yaml")
-        tf.defer(None, lambda _: sh(
-            "kubectl wait deployments --all --namespace=local-path-storage --for=condition=Available --timeout=100s"))
-        # https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/
-        sh("kubectl get storageclass")
-        # kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-        # dashboard tests expect a storage class that's identified by
+    with gha_log_group("Check storage class"):
+        # kind already creates its own default StorageClass at cluster creation time (named
+        # "standard", provisioner rancher.io/local-path, annotated is-default-class: "true") -
+        # this used to also `kubectl apply` rancher/local-path-provisioner's own upstream
+        # manifest on top of that, which just installed a second, non-default StorageClass
+        # named "local-path" that nothing referenced (confirmed via a real CI run's `kubectl
+        # get storageclass` output: only "standard" was ever marked (default), the manually
+        # installed "local-path" one sat unused). Dashboard tests look up whichever class
+        # carries the is-default-class annotation dynamically, not by a hardcoded name - see
         # > oc get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}'
-        # and the above delivers, so nothing more to do here
-        # most importantly, don't create another `storageclass.kubernetes.io/is-default-class: "true"` thing or the above command returns both, space separated
+        # - so kind's own bundled StorageClass already satisfies that without any extra step.
+        sh("kubectl get storageclass")
 
     with gha_log_group("Run deferred functions"):
         with tf:
