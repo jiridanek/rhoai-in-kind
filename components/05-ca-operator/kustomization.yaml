@@ -6,9 +6,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# CAUTION: pinned to a commit, not refs/heads/master. On 2026-08-25 upstream merged a CRD
+# change (PR #2991, "GCD Promotion") that added a `format.dns1123Subdomain()` CEL validation
+# rule to the infrastructures CRD's status.platformStatus.gcp.universeDomain field. The CEL
+# "format" library isn't registered in the API server bundled in kindest/node:v1.31.6 (pinned
+# in components/00-kind-cluster.yaml / the workflows), so every kubectl apply of that CRD
+# failed with "undeclared reference to 'format'", breaking "Deploy stuff into Kubernetes" in
+# all three CI workflows simultaneously. b62ca02690 is the last commit before that merge -
+# re-pin to a newer commit (verify it doesn't reintroduce an incompatible CEL rule) if these
+# manifests need to move forward, rather than going back to a floating branch ref.
 resources:
-  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/operator/v1/zz_generated.crd-manifests/0000_50_service-ca_02_servicecas.crd.yaml
-  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/config/v1/zz_generated.crd-manifests/0000_00_cluster-version-operator_01_clusteroperators.crd.yaml
-  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/payload-manifests/crds/0000_10_config-operator_01_infrastructures-Default.crd.yaml
-  - https://raw.githubusercontent.com/openshift/api/refs/heads/master/payload-command/empty-resources/0000_05_config-operator_02_infrastructure.cr.yaml
+  - https://raw.githubusercontent.com/openshift/api/b62ca02690/operator/v1/zz_generated.crd-manifests/0000_50_service-ca_02_servicecas.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/b62ca02690/config/v1/zz_generated.crd-manifests/0000_00_cluster-version-operator_01_clusteroperators.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/b62ca02690/payload-manifests/crds/0000_10_config-operator_01_infrastructures-Default.crd.yaml
+  - https://raw.githubusercontent.com/openshift/api/b62ca02690/payload-command/empty-resources/0000_05_config-operator_02_infrastructure.cr.yaml
   - manifests.yaml
