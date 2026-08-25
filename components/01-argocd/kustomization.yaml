@@ -8,6 +8,7 @@ resources:
   - namespace.yaml
   - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml
   - httproute.yaml
+  - repo-secrets.yaml
 
 patches:
   - path: gittimeoutconfig.yaml
