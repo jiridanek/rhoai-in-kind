@@ -62,7 +62,7 @@ def main():
 
     if "CI" in os.environ:
         with gha_log_group("Install ArgoCD CLI"):
-            ARGOCD_VERSION = "v3.0.6"
+            ARGOCD_VERSION = "v3.5.1"
             sh(f"curl -sSL -o /tmp/argocd-{ARGOCD_VERSION} https://github.com/argoproj/argo-cd/releases/download/{ARGOCD_VERSION}/argocd-$(go env GOOS)-$(go env GOARCH)")
             sh(f"chmod +x /tmp/argocd-{ARGOCD_VERSION}")
             sh(f"sudo mv /tmp/argocd-{ARGOCD_VERSION} /usr/local/bin/argocd")
@@ -109,7 +109,14 @@ def main():
         sh("kubectl apply -f components/11-coredns.yaml")
 
     with gha_log_group("Install ArgoCD"):
-        sh("kubectl apply -k components/01-argocd")
+        # v3.5.1's applicationsets.argoproj.io CRD is too large for the
+        # kubectl.kubernetes.io/last-applied-configuration annotation client-side apply relies on
+        # ("metadata.annotations: Too long: must have at most 262144 bytes" - confirmed locally;
+        # v3.0.6's copy of the same CRD was just under the limit). --server-side avoids the
+        # annotation entirely (uses managedFields instead); --force-conflicts is needed because
+        # this is a first-time create with no prior field manager. Same fix upstream adopted for
+        # their own install docs: https://github.com/argoproj/argo-cd/pull/25538
+        sh("kubectl apply -k components/01-argocd --server-side --force-conflicts")
         tf.defer(None, lambda _: sh(
             "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=120s"))
 
