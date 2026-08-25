@@ -251,6 +251,23 @@ def main():
         # fail in server mode, because argocd-server (in-pod) cannot reach its host-only
         # 127.0.0.1:6443 to validate the cluster.
 
+    with gha_log_group("Wait for ArgoCD application-controller readiness"):
+        # argocd-application-controller is a StatefulSet, not a Deployment - the "Login to
+        # ArgoCD" wait above (which only waits on Deployments) does not cover it, so its own
+        # internal bootstrap (populating argocd-secret's server.secretkey field, used to
+        # decrypt/access its in-cluster credentials cache) can still be in progress even once
+        # argocd-server is answering logins. A sync attempted before that finishes fails with
+        # "error getting cluster by server \"https://kubernetes.default.svc\": server.secretkey
+        # is missing" - confirmed in CI: the *first* app synced (kf-pipelines) usually clears
+        # this race by luck (more wall-clock time has passed by the time it runs), but the
+        # *second* one (odh-dashboard) can land squarely inside the window and burn its whole
+        # ARGOCD_TIMEOUT retrying a sync that can never succeed until this key exists.
+        sh(
+            f"""timeout {ARGOCD_TIMEOUT} bash -c '
+                while [ -z "$(kubectl -n argocd get secret argocd-secret -o jsonpath="{{.data.server\\.secretkey}}" 2>/dev/null)" ]; do sleep 1; done
+            '"""
+        )
+
     # actually needed, did something that DSP Workbenches dashboard tab won't load without
     with gha_log_group("Install KF Pipelines"):
         # dspa is looking up configmaps in this namespace
