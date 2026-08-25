@@ -205,18 +205,23 @@ jobs:
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
+      # CAUTION: must match node_image below - a drifted pre-pull is silently a no-op (see the
+      # istio pre-pull's own history of this exact bug).
       - name: Pre-pull the kind image
-        run: timeout 120s bash -c 'while ! docker pull kindest/node:v1.31.6; do sleep 1; done'
+        run: timeout 120s bash -c 'while ! docker pull kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5; do sleep 1; done'
 
       - name: Kubernetes KinD Cluster
         id: kind-cluster
         uses: helm/kind-action@v1
         with:
           version: v0.32.0
-          # Dashboard tests fail on k8s 1.32
+          # kind v0.32.0's own default node image (its release notes recommend pinning by
+          # digest, not just tag, until node images get a different tagging scheme).
+          # Was pinned to v1.31.6 since April 2025 over a "dashboard tests fail on k8s 1.32"
+          # comment that turned out to be unrelated to the Kubernetes version at all (see
+          # components/deploy.py's "Check storage class" step and PR #77) - re-tested here.
           # https://hub.docker.com/r/kindest/node/tags
-          # Let's keep using same version as for dashboard then
-          node_image: "docker.io/kindest/node:v1.31.6"
+          node_image: "docker.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
           cluster_name: kind
           config: components/00-kind-cluster.yaml
 

@@ -83,7 +83,7 @@ mkdir -p ~/.config/containers && printf '[machine]\nrosetta = true\n' >> ~/.conf
 
 podman machine init --rootful --memory $((16 * 1024)) --cpus 4
 podman machine start
-kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.31.6
+kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
 
 python3 components/deploy.py --workbench-branch=v1.36.0
 ```
