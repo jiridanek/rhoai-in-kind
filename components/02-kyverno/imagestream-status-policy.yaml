@@ -69,7 +69,7 @@ spec:
               op: "add",
               path: "/status",
               value: {
-                "tags": dyn(object.spec.tags.map(tag, {
+                "tags": dyn(object.spec.?tags.orValue([]).map(tag, {
                   "tag": dyn(tag.name),
                   "items": dyn([
                     {

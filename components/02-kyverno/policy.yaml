@@ -228,6 +228,9 @@ spec:
     podControllers:
       controllers: []
   matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        opendatahub.io/dashboard: "true"
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]
@@ -236,17 +239,32 @@ spec:
         resources: ["pods"]
   mutations:
     # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
+    # "remove" errors if its target is absent and "add" errors if an intermediate parent object
+    # (resources/requests) is absent; with the default failurePolicy: Fail either would reject the
+    # whole Pod admission, so every op below is conditioned on the field actually being present.
     - patchType: JSONPatch
       jsonPatch:
         expression: >-
           object.spec.containers.map(c, [
-            JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/memory", value: "0"},
-            JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/cpu"},
-            JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/limits/cpu"}
-          ]).flatten()
+            (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/cpu"}] : [],
+            (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/limits/cpu"}] : [],
+            !has(c.resources)
+              ? [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
+              : !has(c.resources.requests)
+                ? [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
+                : [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/memory", value: "0"}]
+          ].flatten()).flatten()
           +
           object.spec.?initContainers.orValue([]).map(c, [
-            JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/memory", value: "0"},
-            JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/cpu"},
-            JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/limits/cpu"}
-          ]).flatten()
+            (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/cpu"}] : [],
+            (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/limits/cpu"}] : [],
+            !has(c.resources)
+              ? [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
+              : !has(c.resources.requests)
+                ? [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
+                : [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/memory", value: "0"}]
+          ].flatten()).flatten()
