@@ -88,12 +88,14 @@ spec:
       matchLabels:
         opendatahub.io/dashboard: "true"
   variables:
+    - name: saMountPath
+      expression: '"/var/run/secrets/kubernetes.io/serviceaccount"'
     - name: volumeMount
       expression: >-
         {
           "name": dyn("service-ca-kube-api-access"),
           "readOnly": dyn(true),
-          "mountPath": dyn("/var/run/secrets/kubernetes.io/serviceaccount")
+          "mountPath": dyn(variables.saMountPath)
         }
     - name: volume
       expression: >-
@@ -114,29 +116,39 @@ spec:
     # JSONPatch (not ApplyConfiguration) because the deeply-nested projected-volume-source fields are
     # k8s API atomic lists/structs, which ApplyConfiguration's structured merge rejects outright
     # ("may not mutate atomic arrays, maps or structs") even for a brand-new volume with no prior owner.
-    # `(name): "*"` (legacy wildcard anchor) becomes an explicit `map()` producing one add-op per
-    # container/initContainer, appending or creating the volumeMounts array as needed.
+    # `(name): "*"` (legacy wildcard anchor) becomes an explicit `map()` producing one op per container/initContainer.
+    # IMPORTANT: Kubernetes' own strategic-merge-patch key for Container.volumeMounts is `mountPath`, not
+    # `name` - so the legacy patchStrategicMerge silently REPLACED the default service-account-token mount
+    # (which every Pod gets unless automountServiceAccountToken: false) rather than adding a second entry
+    # at the same path. A plain JSONPatch "add" doesn't get that merge-key behavior for free and instead
+    # creates a real duplicate, which the apiserver's own Pod validation rejects with "must be unique"
+    # (confirmed live: this broke every notebook Pod in CI). Replicate the merge-by-mountPath explicitly:
+    # if a volumeMount at our target path already exists, "replace" it in place; otherwise append/create.
     - patchType: JSONPatch
       jsonPatch:
         expression: >-
           object.spec.containers.map(c,
-            JSONPatch{
-              op: "add",
-              path: has(c.volumeMounts)
-                ? "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts/-"
-                : "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts",
-              value: has(c.volumeMounts) ? variables.volumeMount : dyn([variables.volumeMount])
-            }
+            (has(c.volumeMounts) && c.volumeMounts.exists(vm, vm.mountPath == variables.saMountPath))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts/" + string(c.volumeMounts.map(vm, vm.mountPath).indexOf(variables.saMountPath)),
+                  value: variables.volumeMount
+                }
+              : has(c.volumeMounts)
+                ? JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts/-", value: variables.volumeMount}
+                : JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts", value: dyn([variables.volumeMount])}
           )
           +
           object.spec.?initContainers.orValue([]).map(c,
-            JSONPatch{
-              op: "add",
-              path: has(c.volumeMounts)
-                ? "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts/-"
-                : "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts",
-              value: has(c.volumeMounts) ? variables.volumeMount : dyn([variables.volumeMount])
-            }
+            (has(c.volumeMounts) && c.volumeMounts.exists(vm, vm.mountPath == variables.saMountPath))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts/" + string(c.volumeMounts.map(vm, vm.mountPath).indexOf(variables.saMountPath)),
+                  value: variables.volumeMount
+                }
+              : has(c.volumeMounts)
+                ? JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts/-", value: variables.volumeMount}
+                : JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts", value: dyn([variables.volumeMount])}
           )
           +
           [
