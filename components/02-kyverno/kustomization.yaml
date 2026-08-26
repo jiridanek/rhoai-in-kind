@@ -6,3 +6,42 @@ kind: Kustomization
 namespace: kyverno
 resources:
   - https://github.com/kyverno/kyverno/releases/download/v1.19.0/install.yaml
+
+patches:
+  - path: success-events-config.yaml
+  # install.yaml bakes in `--omitEvents=PolicyApplied,PolicySkipped` on these 3 controllers, which
+  # silently overrides the ConfigMap's generateSuccessEvents/successEventActions above (confirmed by
+  # a "generateSuccessEvents is enabled but PolicyApplied is in omitEvents" log warning otherwise).
+  # Appending a second --omitEvents wins: Kyverno v1.19.0 registers it with Go's standard
+  # flag.FlagSet.StringVar in all three controllers, so repeated values overwrite earlier ones - see
+  # https://github.com/kyverno/kyverno/blob/v1.19.0/cmd/kyverno/main.go#L397,
+  # cmd/background-controller/main.go#L146, cmd/reports-controller/main.go#L323). Appending avoids
+  # depending on the flag's position in the args array, which shifts across version bumps -
+  # cleanup-controller has no --omitEvents flag at all, so it's not patched here.
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --omitEvents=PolicySkipped
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kyverno-admission-controller
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --omitEvents=PolicySkipped
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kyverno-background-controller
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --omitEvents=PolicySkipped
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kyverno-reports-controller
