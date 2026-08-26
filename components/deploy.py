@@ -345,6 +345,15 @@ def main():
         # dspa is looking up configmaps in this namespace
         # sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
 
+        # sync-ca-configmap's GeneratingPolicy creates odh-trusted-ca-bundle here in reaction to
+        # this namespace's earlier Namespace CREATE event, so it can lag a few seconds - and
+        # Kyverno's policies aren't even installed yet at that point (they're applied later,
+        # below), so this actually depends on generateExisting doing a retroactive background
+        # scan. DSPO's own pod (started by the ArgoCD sync right below) needs this configmap's
+        # combined-ca-bundle.crt to trust MinIO's TLS cert (#89) - wait for it explicitly rather
+        # than relying on the many intervening deploy steps to provide enough of a buffer.
+        sh(f"timeout 60s bash -c 'while ! kubectl get configmap odh-trusted-ca-bundle -n {REDHAT_ODS_APPLICATIONS} >/dev/null 2>&1; do sleep 1; done'")
+
         sh(argocd_sync_cmd("kf-pipelines"))
 
         # wait for argocd to sync the application
