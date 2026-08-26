@@ -97,12 +97,29 @@ spec:
   variables:
     - name: saMountPath
       expression: '"/var/run/secrets/kubernetes.io/serviceaccount"'
+    # Real fix for #89: mounting a CA file alone does nothing for Go/Python HTTPS clients unless
+    # something also points them at it - SSL_CERT_FILE is the standard Go crypto/x509 env override
+    # (also respected by Python's ssl/requests via OpenSSL). combined-ca-bundle.crt (built by
+    # certs.py's ca_issuer()) is the system CA bundle with "My Cluster CA" appended, so trust for
+    # both the public internet (pip/git/registries) and *.apps.127.0.0.1.sslip.io (MinIO, DSPA, ...)
+    # come from one file. Verified live: `openshift-service-ca.crt` (mounted here previously) is a
+    # dummy self-signed cert from a fake "openshift-service-serving-signer" - unrelated to the actual
+    # CA that signs *.apps.127.0.0.1.sslip.io, so it could never have fixed any TLS trust problem;
+    # and no env var was ever set to make any consumer read either file in the first place.
+    - name: caBundlePath
+      expression: variables.saMountPath + "/combined-ca-bundle.crt"
     - name: volumeMount
       expression: >-
         {
           "name": dyn("service-ca-kube-api-access"),
           "readOnly": dyn(true),
           "mountPath": dyn(variables.saMountPath)
+        }
+    - name: sslCertFileEnvVar
+      expression: >-
+        {
+          "name": dyn("SSL_CERT_FILE"),
+          "value": dyn(variables.caBundlePath)
         }
     - name: volume
       expression: >-
@@ -113,7 +130,8 @@ spec:
               {"serviceAccountToken": dyn({"expirationSeconds": dyn(3607), "path": dyn("token")})},
               {"configMap": dyn({"name": dyn("kube-root-ca.crt"), "items": dyn([{"key": dyn("ca.crt"), "path": dyn("ca.crt")}])})},
               {"downwardAPI": dyn({"items": dyn([{"path": dyn("namespace"), "fieldRef": dyn({"apiVersion": dyn("v1"), "fieldPath": dyn("metadata.namespace")})}])})},
-              {"configMap": dyn({"name": dyn("openshift-service-ca.crt"), "items": dyn([{"key": dyn("service-ca.crt"), "path": dyn("service-ca.crt")}])})}
+              {"configMap": dyn({"name": dyn("openshift-service-ca.crt"), "items": dyn([{"key": dyn("service-ca.crt"), "path": dyn("service-ca.crt")}])})},
+              {"configMap": dyn({"name": dyn("odh-trusted-ca-bundle"), "items": dyn([{"key": dyn("combined-ca-bundle.crt"), "path": dyn("combined-ca-bundle.crt")}])})}
             ]),
             "defaultMode": dyn(420)
           })
@@ -165,6 +183,30 @@ spec:
               value: has(object.spec.volumes) ? variables.volume : dyn([variables.volume])
             }
           ]
+          +
+          object.spec.containers.map(c,
+            (has(c.env) && c.env.exists(e, e.name == "SSL_CERT_FILE"))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/env/" + string(c.env.map(e, e.name).indexOf("SSL_CERT_FILE")),
+                  value: variables.sslCertFileEnvVar
+                }
+              : has(c.env)
+                ? JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/env/-", value: variables.sslCertFileEnvVar}
+                : JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/env", value: dyn([variables.sslCertFileEnvVar])}
+          )
+          +
+          object.spec.?initContainers.orValue([]).map(c,
+            (has(c.env) && c.env.exists(e, e.name == "SSL_CERT_FILE"))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/env/" + string(c.env.map(e, e.name).indexOf("SSL_CERT_FILE")),
+                  value: variables.sslCertFileEnvVar
+                }
+              : has(c.env)
+                ? JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/env/-", value: variables.sslCertFileEnvVar}
+                : JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/env", value: dyn([variables.sslCertFileEnvVar])}
+          )
 ---
 # Keeps rhoai-in-kind.io/inject-openshift-ca in sync with opendatahub.io/dashboard, so namespaces
 # that ods-ci/the Dashboard label as Data Science Projects (Projects.resource's

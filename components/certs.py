@@ -57,7 +57,24 @@ def ca_issuer():
     sh("openssl req -x509 -new -nodes -keyout ca.key -sha256 -days 3650 -out ca.crt -subj '/CN=My Cluster CA' -addext 'subjectAltName = DNS:*.apps.127.0.0.1.sslip.io'")
     sh("kubectl create secret tls my-cluster-ca-secret --cert=ca.crt --key=ca.key --namespace=cert-manager --dry-run=client -o yaml | kubectl apply -f -")
 
-    sh(f"kubectl create configmap odh-trusted-ca-bundle --namespace=cert-manager --from-file=odh-ca-bundle.crt=ca.crt --from-file=ca-bundle.crt={find_ca_bundle_path()} --dry-run=client -o yaml | kubectl apply -f -")
+    # combined-ca-bundle.crt is what actually gets trusted by workloads (via SSL_CERT_FILE, see
+    # policy.yaml's openshift-like-volume-mounts): odh-ca-bundle.crt alone signs *.apps.127.0.0.1.sslip.io
+    # (MinIO, DSPA, etc.) but isn't enough on its own - a workbench pod doing `pip install` or `git clone`
+    # against the real internet needs the normal system CA bundle too, so we concatenate both.
+    system_ca_bundle_path = find_ca_bundle_path()
+    with open("combined-ca-bundle.crt", "wb") as combined:
+        combined.write(pathlib.Path(system_ca_bundle_path).read_bytes())
+        combined.write(b"\n")
+        combined.write(pathlib.Path("ca.crt").read_bytes())
+
+    # --server-side (not the default client-side apply): the combined bundle plus the two original
+    # keys is well over 256KB, and client-side apply's kubectl.kubernetes.io/last-applied-configuration
+    # annotation has a hard 262144-byte cap ("metadata.annotations: Too long"), which client-side apply
+    # hit as soon as combined-ca-bundle.crt (a near-duplicate of ca-bundle.crt) was added.
+    sh(f"kubectl create configmap odh-trusted-ca-bundle --namespace=cert-manager "
+       f"--from-file=odh-ca-bundle.crt=ca.crt --from-file=ca-bundle.crt={system_ca_bundle_path} "
+       f"--from-file=combined-ca-bundle.crt=combined-ca-bundle.crt --dry-run=client -o yaml "
+       f"| kubectl apply --server-side --force-conflicts -f -")
 
     ## Option 2: Use trust-manager (The Recommended Method) 🚀
 
