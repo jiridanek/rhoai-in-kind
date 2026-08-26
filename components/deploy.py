@@ -233,7 +233,8 @@ def main():
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/pipelines-routes-policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/imagestream-status-policy.yaml; do sleep 1; done'")
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready mutatingpolicies.policies.kyverno.io --all"))
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready generatingpolicies.policies.kyverno.io --all"))
 
     with gha_log_group("Run deferred functions"):
         with tf:
@@ -346,7 +347,7 @@ def main():
         # resolution for the DataSciencePipelinesApplication kind and was observed to block
         # the readiness wait for every ClusterPolicy, not just this one (PR #70).
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/dspa-pipelinestore-policy.yaml; do sleep 1; done'")
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy/force-dspa-pipelinestore-database"))
+        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready mutatingpolicy.policies.kyverno.io/force-dspa-pipelinestore-database"))
 
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")

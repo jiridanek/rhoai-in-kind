@@ -55,89 +55,106 @@ subjects:
     name: kyverno-reports-controller
     namespace: kyverno
 ---
-apiVersion: kyverno.io/v2beta1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
 metadata:
-  name: manage-notebook-gateway-routes
+  name: generate-tlsroute-for-notebook
   annotations:
-    policies.kyverno.io/title: Manage TLSRoute and Route Hostname for Notebooks
+    policies.kyverno.io/title: Generate TLSRoute for Notebooks
     policies.kyverno.io/category: Gateway API, OpenShiftAI
     policies.kyverno.io/subject: Route, TLSRoute
     policies.kyverno.io/description: >-
-      When an OpenShift Route for a OpenShiftAI Notebook is created with an empty host,
-      this policy generates a corresponding TLSRoute attaching to a predefined Gateway
-      and updates the original Route's spec.host field using a predictable hostname format
-      (<notebook-name>-<namespace>.127.0.0.1.sslip.io). Requires the Gateway API CRDs
-      and a target Gateway to exist.
+      When an OpenShift Route for an OpenShiftAI Notebook is created, this policy generates
+      a corresponding TLSRoute attaching to a predefined Gateway, using a predictable
+      hostname format (<notebook-name>-<namespace>.127.0.0.1.sslip.io). Requires the
+      Gateway API CRDs and a target Gateway to exist.
 spec:
-  validationFailureAction: Audit # Use 'Enforce' in production if confident
-  background: false
-  rules:
-    - name: generate-tlsroute-for-notebook
-      match:
-        any:
-          - resources:
-              kinds:
-                - route.openshift.io/v1/Route
-              # The user-created namespaces/data science projects may not have any deterministic label at all
-              #namespaceSelector:
-              #  matchLabels:
-              #    kubernetes.io/metadata.name: rhods-notebooks
-      preconditions:
-        all:
-            # - key: "{{ length(coalesce(request.object.metadata.ownerReferences[?(@.kind == 'Notebook')], [])) }}"  # coalesce() for null safety
-          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'Notebook')]) }}"  # Null-safe using || operator
-            operator: GreaterThan
-            value: 0
-          - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
-            operator: NotEquals
-            value: ""
-      generate:
-        apiVersion: gateway.networking.k8s.io/v1alpha2 # TODO(jdanek): adjust if using v1beta1 or v1
-        kind: TLSRoute
-        name: "{{ request.object.metadata.name }}"
-        namespace: "{{ request.object.metadata.namespace }}"
-        synchronize: true
-        data:
+  evaluation:
+    synchronize:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["route.openshift.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["routes"]
+  matchConditions:
+    - name: has-notebook-owner
+      expression: >-
+        object.metadata.?ownerReferences.orValue([]).exists(r, r.kind == 'Notebook')
+    - name: has-notebook-name-label
+      expression: >-
+        object.metadata.?labels['notebook-name'].orValue('') != ''
+  variables:
+    - name: nsName
+      expression: object.metadata.namespace
+    - name: name
+      expression: object.metadata.name
+    - name: hostname
+      # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
+      # https://github.com/kyverno/kyverno/issues/4206
+      expression: object.metadata.labels['notebook-name'] + '-' + object.metadata.namespace + '.127.0.0.1.sslip.io'
+    - name: backendName
+      expression: object.spec.to.name
+  generate:
+    - template:
+        interpolate: cel
+        value: |
+          apiVersion: gateway.networking.k8s.io/v1alpha2
+          kind: TLSRoute
           metadata:
-            ownerReferences: "{{ request.object.metadata.ownerReferences }}"
-              #controller: false
+            name: (( variables.name ))
+            namespace: (( variables.nsName ))
+            ownerReferences: (( object.metadata.ownerReferences ))
           spec:
             parentRefs:
-              - name: "gateway"
-                namespace: "istio-system"
+              - name: gateway
+                namespace: istio-system
             hostnames:
-              # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
-              # https://github.com/kyverno/kyverno/issues/4206
-              - "{{ request.object.metadata.labels.\"notebook-name\" }}-{{ request.object.metadata.namespace }}.127.0.0.1.sslip.io"
+              - (( variables.hostname ))
             rules:
               - backendRefs:
-                  - name: "{{ request.object.spec.to.name }}"
+                  - name: (( variables.backendName ))
                     kind: Service
                     port: 443 # routes and tlsroutes may differ whether named ports are allowed
-
-    - name: update-route-host-for-notebook
-      match: # Use the same match conditions as the generate rule!
-        any:
-          - resources:
-              kinds:
-                - route.openshift.io/v1/Route
-              #namespaceSelector:
-              #  matchLabels:
-              #    kubernetes.io/metadata.name: rhods-notebooks
-      preconditions:
-        all:
-          - key: "{{ request.object.spec.host || '' }}"
-            operator: Equals
-            value: ""
-          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'Notebook')]) }}"  # Null-safe using || operator
-            operator: GreaterThan
-            value: 0
-          - key: "{{ request.object.metadata.labels.\"notebook-name\" || '' }}"
-            operator: NotEquals
-            value: ""
-      mutate:
-        patchStrategicMerge:
-          spec:
-            # *** USE THE SAME PREDICTABLE HOSTNAME PATTERN AS THE GENERATED TLSROUTE ***
-            host: "{{ request.object.metadata.labels.\"notebook-name\" }}-{{ request.object.metadata.namespace }}.127.0.0.1.sslip.io"
+---
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: update-route-host-for-notebook
+  annotations:
+    policies.kyverno.io/title: Update Route Hostname for Notebooks
+    policies.kyverno.io/category: Gateway API, OpenShiftAI
+    policies.kyverno.io/subject: Route
+    policies.kyverno.io/description: >-
+      Updates a Notebook's Route spec.host field, using the same predictable hostname
+      format as the generate-tlsroute-for-notebook policy's generated TLSRoute.
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["route.openshift.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["routes"]
+  matchConditions:
+    - name: host-empty
+      expression: object.spec.?host.orValue('') == ''
+    - name: has-notebook-owner
+      expression: >-
+        object.metadata.?ownerReferences.orValue([]).exists(r, r.kind == 'Notebook')
+    - name: has-notebook-name-label
+      expression: >-
+        object.metadata.?labels['notebook-name'].orValue('') != ''
+  variables:
+    - name: hostname
+      # *** USE THE SAME PREDICTABLE HOSTNAME PATTERN AS THE GENERATED TLSROUTE ***
+      expression: object.metadata.labels['notebook-name'] + '-' + object.metadata.namespace + '.127.0.0.1.sslip.io'
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >-
+          Object{
+            spec: Object.spec{
+              host: variables.hostname
+            }
+          }

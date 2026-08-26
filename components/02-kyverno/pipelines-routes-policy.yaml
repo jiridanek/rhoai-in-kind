@@ -79,149 +79,161 @@ subjects:
     name: kyverno-reports-controller
     namespace: kyverno
 ---
-apiVersion: kyverno.io/v2beta1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
 metadata:
-  name: manage-pipelines-gateway-routes
+  name: generate-backendtls-for-service
   annotations:
-    policies.kyverno.io/title: Manage TLSRoute and Route Hostname for Notebooks
+    policies.kyverno.io/title: Generate DestinationRule for Pipelines Service
     policies.kyverno.io/category: Gateway API, OpenShiftAI
-    policies.kyverno.io/subject: Route, TLSRoute
+    policies.kyverno.io/subject: Service, DestinationRule
     policies.kyverno.io/description: >-
-      When an OpenShift Route for a OpenShiftAI Notebook is created with an empty host,
-      this policy generates a corresponding TLSRoute attaching to a predefined Gateway
-      and updates the original Route's spec.host field using a predictable hostname format
-      (<notebook-name>-<namespace>.127.0.0.1.sslip.io). Requires the Gateway API CRDs
-      and a target Gateway to exist.
+      When a Service for a DataSciencePipelinesApplication is created, this policy generates
+      a DestinationRule disabling TLS validation, since the pipelines API server's certificate
+      isn't trusted by the mesh by default.
 spec:
-  validationFailureAction: Audit # Use 'Enforce' in production if confident
-  background: false
-  rules:
-    - name: generate-backendtls-for-service
-      match:
-        any:
-          - resources:
-              kinds:
-                - Service
-              # The user-created namespaces/data science projects may not have any deterministic label at all
-              #namespaceSelector:
-              #  matchLabels:
-              #    kubernetes.io/metadata.name: rhods-notebooks
-      preconditions:
-        all:
-          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
-            operator: GreaterThan
-            value: 0
-          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
-            operator: NotEquals
-            value: ""
-      generate:
-        synchronize: true
-        # Two options here
-        # * BackendTLSPolicy and provide correct cert
-        # * DestinationRule (istio specific) and disable TLS validation
+  evaluation:
+    synchronize:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["services"]
+  matchConditions:
+    - name: has-dspa-owner
+      expression: >-
+        object.metadata.?ownerReferences.orValue([]).exists(r, r.kind == 'DataSciencePipelinesApplication')
+    - name: has-app-label
+      expression: object.metadata.?labels['app'].orValue('') != ''
+  variables:
+    - name: nsName
+      expression: object.metadata.namespace
+    - name: name
+      expression: object.metadata.name
+  generate:
+    # Two options here
+    # * BackendTLSPolicy and provide correct cert
+    # * DestinationRule (istio specific) and disable TLS validation
 
-        # DestinationRule option
-        apiVersion: networking.istio.io/v1beta1
-        kind: DestinationRule
-        name: "{{ request.object.metadata.name }}"
-        namespace: "{{ request.object.metadata.namespace }}"
-        data:
+    # DestinationRule option
+    - template:
+        interpolate: cel
+        value: |
+          apiVersion: networking.istio.io/v1beta1
+          kind: DestinationRule
+          metadata:
+            name: (( variables.name ))
+            namespace: (( variables.nsName ))
           spec:
-            host: "{{ request.object.metadata.name }}.{{ request.object.metadata.namespace }}.svc.cluster.local"
+            host: (( variables.name + '.' + variables.nsName + '.svc.cluster.local' ))
             trafficPolicy:
               tls:
                 mode: SIMPLE
                 insecureSkipVerify: true
-        # BackendTLSPolicy option
-        #apiVersion: gateway.networking.k8s.io/v1alpha3  # TODO(jdanek): adjust if using v1beta1 or v1
-        #kind: BackendTLSPolicy
-        #name: "{{ request.object.metadata.name }}"
-        #namespace: "{{ request.object.metadata.namespace }}"
-        #synchronize: true
-        #data:
-        #  metadata:
-        #    ownerReferences: "{{ request.object.metadata.ownerReferences }}"
-        #  spec:
-        #    targetRefs:
-        #      - group: ""
-        #        kind: Service
-        #        name: "{{ request.object.metadata.name }}"
-        #    # TLS settings for the connection from the Gateway to the backend
-        #    validation:
-        #      # This is the list of CAs the Gateway will trust
-        #      caCertificateRefs:
-        #        - group: ""
-        #          kind: ConfigMap
-        #          name: openshift-service-ca.crt-noservice
-        #      # This hostname is used for SNI and must match the CN in the backend certificate
-        #      hostname: "{{ request.object.metadata.name }}.{{ request.object.metadata.namespace }}.svc.cluster.local"
-    - name: generate-tlsroute-for-notebook
-      match:
-        any:
-          - resources:
-              kinds:
-                - route.openshift.io/v1/Route
-              # The user-created namespaces/data science projects may not have any deterministic label at all
-              #namespaceSelector:
-              #  matchLabels:
-              #    kubernetes.io/metadata.name: rhods-notebooks
-      preconditions:
-        all:
-          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
-            operator: GreaterThan
-            value: 0
-          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
-            operator: NotEquals
-            value: ""
-      generate:
-        apiVersion: gateway.networking.k8s.io/v1  # TODO(jdanek): adjust if using v1beta1 or v1
-        kind: HTTPRoute
-        name: "{{ request.object.metadata.name }}"
-        namespace: "{{ request.object.metadata.namespace }}"
-        synchronize: true
-        data:
+---
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
+metadata:
+  name: generate-httproute-for-pipeline
+  annotations:
+    policies.kyverno.io/title: Generate HTTPRoute for Pipelines
+    policies.kyverno.io/category: Gateway API, OpenShiftAI
+    policies.kyverno.io/subject: Route, HTTPRoute
+    policies.kyverno.io/description: >-
+      When an OpenShift Route for a DataSciencePipelinesApplication is created, this policy
+      generates a corresponding HTTPRoute attaching to a predefined Gateway, using a predictable
+      hostname format (<app-label>-<namespace>.apps.127.0.0.1.sslip.io). Requires the Gateway
+      API CRDs and a target Gateway to exist.
+spec:
+  evaluation:
+    synchronize:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["route.openshift.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["routes"]
+  matchConditions:
+    - name: has-dspa-owner
+      expression: >-
+        object.metadata.?ownerReferences.orValue([]).exists(r, r.kind == 'DataSciencePipelinesApplication')
+    - name: has-app-label
+      expression: object.metadata.?labels['app'].orValue('') != ''
+  variables:
+    - name: nsName
+      expression: object.metadata.namespace
+    - name: name
+      expression: object.metadata.name
+    - name: hostname
+      # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
+      # https://github.com/kyverno/kyverno/issues/4206
+      expression: object.metadata.labels['app'] + '-' + object.metadata.namespace + '.apps.127.0.0.1.sslip.io'
+    - name: backendName
+      expression: object.spec.to.name
+  generate:
+    - template:
+        interpolate: cel
+        value: |
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
           metadata:
-            ownerReferences: "{{ request.object.metadata.ownerReferences }}"
+            name: (( variables.name ))
+            namespace: (( variables.nsName ))
+            ownerReferences: (( object.metadata.ownerReferences ))
           spec:
             parentRefs:
-              - name: "gateway"
-                namespace: "istio-system"
-                sectionName: "https-terminate"
+              - name: gateway
+                namespace: istio-system
+                sectionName: https-terminate
             hostnames:
-              # USE THE SAME HOSTNAME FORMAT IN THE GENERATED TLSROUTE AND THE ROUTE
-              # https://github.com/kyverno/kyverno/issues/4206
-              - "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.apps.127.0.0.1.sslip.io"
+              - (( variables.hostname ))
             rules:
               - backendRefs:
-                  - name: "{{ request.object.spec.to.name }}"
+                  - name: (( variables.backendName ))
                     kind: Service
-                    port: 8443  # routes and tlsroutes may differ whether named ports are allowed
-
-    - name: update-route-host-for-pipeline
-      match: # Use the same match conditions as the generate rule!
-        any:
-          - resources:
-              kinds:
-                - route.openshift.io/v1/Route
-              #namespaceSelector:
-              #  matchLabels:
-              #    kubernetes.io/metadata.name: rhods-notebooks
-      preconditions:
-        all:
-          - key: "{{ request.object.spec.host || '' }}"
-            operator: Equals
-            value: ""
-          - key: "{{ length((request.object.metadata.ownerReferences || `[]`)[?(@.kind == 'DataSciencePipelinesApplication')]) }}"  # Null-safe using || operator
-            operator: GreaterThan
-            value: 0
-          - key: "{{ request.object.metadata.labels.\"app\" || '' }}"
-            operator: NotEquals
-            value: ""
-      mutate:
-        patchStrategicMerge:
-          spec:
-            # *** USE THE SAME PREDICTABLE HOSTNAME PATTERN AS THE GENERATED TLSROUTE ***
-            #host: "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.127.0.0.1.sslip.io"
-            # actually, need this reachable from cluster, so 127.0.0.1 won't work
-            host: "{{ request.object.metadata.labels.\"app\" }}-{{ request.object.metadata.namespace }}.apps.127.0.0.1.sslip.io"
+                    port: 8443 # routes and tlsroutes may differ whether named ports are allowed
+---
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: update-route-host-for-pipeline
+  annotations:
+    policies.kyverno.io/title: Update Route Hostname for Pipelines
+    policies.kyverno.io/category: Gateway API, OpenShiftAI
+    policies.kyverno.io/subject: Route
+    policies.kyverno.io/description: >-
+      Updates a DataSciencePipelinesApplication's Route spec.host field, using the same
+      predictable hostname format as the generate-httproute-for-pipeline policy's generated
+      HTTPRoute.
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["route.openshift.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["routes"]
+  matchConditions:
+    - name: host-empty
+      expression: object.spec.?host.orValue('') == ''
+    - name: has-dspa-owner
+      expression: >-
+        object.metadata.?ownerReferences.orValue([]).exists(r, r.kind == 'DataSciencePipelinesApplication')
+    - name: has-app-label
+      expression: object.metadata.?labels['app'].orValue('') != ''
+  variables:
+    - name: hostname
+      # *** USE THE SAME PREDICTABLE HOSTNAME PATTERN AS THE GENERATED TLSROUTE ***
+      # actually, need this reachable from cluster, so 127.0.0.1 won't work
+      expression: object.metadata.labels['app'] + '-' + object.metadata.namespace + '.apps.127.0.0.1.sslip.io'
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >-
+          Object{
+            spec: Object.spec{
+              host: variables.hostname
+            }
+          }
