@@ -1,7 +1,19 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kyverno-route-tlsroute-manager
+  # NOTE: pipelines-routes-policy.yaml defines its own, differently-scoped
+  # kyverno-pipeline-route-manager ClusterRole under a distinct name. These two files used
+  # to define a ClusterRole with the SAME name ("kyverno-route-tlsroute-manager") but
+  # different, non-overlapping rule sets - `kubectl apply` on either file silently clobbered
+  # the other's RBAC grants (no merging across files for a same-named cluster-scoped object),
+  # since a ClusterRole isn't a Kustomize/Kyverno concept, just a plain resource whose whole
+  # object gets replaced by the last apply. Confirmed live in #95's investigation: this caused
+  # kyverno-background-controller to lose "get/create destinationrules"/"get/create httproutes"
+  # permissions whenever notebook-routes-policy.yaml was applied after pipelines-routes-policy.yaml,
+  # breaking DSPA's DestinationRule/HTTPRoute generation with "... is forbidden: User
+  # \"system:serviceaccount:kyverno:kyverno-background-controller\" cannot get resource ...".
+  # Distinct names per file avoid the collision entirely.
+  name: kyverno-notebook-route-manager
 rules:
   - apiGroups:
       - gateway.networking.k8s.io
@@ -39,11 +51,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kyverno-bind-route-tlsroute-manager
+  name: kyverno-bind-notebook-route-manager
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kyverno-route-tlsroute-manager
+  name: kyverno-notebook-route-manager
 subjects:
   - kind: ServiceAccount
     name: kyverno-admission-controller
@@ -74,9 +86,18 @@ spec:
       enabled: true
   matchConstraints:
     resourceRules:
+      # UPDATE is required, not just CREATE: the companion update-route-host-for-notebook
+      # MutatingPolicy below always fires an UPDATE on the Route right after DSPO/the notebook
+      # controller creates it (to set spec.host, since the Route is created with an empty
+      # host). With synchronize: true and only CREATE listed here, Kyverno's background
+      # controller re-evaluates this GeneratingPolicy's match on that very next UPDATE event,
+      # decides its own trigger "no longer matches" (operations: ["CREATE"] doesn't cover
+      # UPDATE), and immediately deletes the TLSRoute it just generated - permanently, since
+      # no further CREATE ever happens for that Route. Confirmed live: without "UPDATE" here,
+      # the TLSRoute is generated then torn down within the same second, every time.
       - apiGroups: ["route.openshift.io"]
         apiVersions: ["v1"]
-        operations: ["CREATE"]
+        operations: ["CREATE", "UPDATE"]
         resources: ["routes"]
   matchConditions:
     - name: has-notebook-owner
