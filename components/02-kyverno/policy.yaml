@@ -237,6 +237,15 @@ spec:
         # override any updates from controller/statefulset
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
+  variables:
+    # containers and initContainers need identical treatment, just under a different /spec/<kind>
+    # path prefix - iterate both through one shared expression below instead of duplicating it.
+    - name: containerGroups
+      expression: >-
+        [
+          {"kind": dyn("containers"), "list": dyn(object.spec.containers)},
+          {"kind": dyn("initContainers"), "list": dyn(object.spec.?initContainers.orValue([]))}
+        ]
   mutations:
     # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
     # "remove" errors if its target is absent and "add" errors if an intermediate parent object
@@ -245,26 +254,14 @@ spec:
     - patchType: JSONPatch
       jsonPatch:
         expression: >-
-          object.spec.containers.map(c, [
+          variables.containerGroups.map(g, g.list.map(c, [
             (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
-              ? [JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/cpu"}] : [],
+              ? [JSONPatch{op: "remove", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests/cpu"}] : [],
             (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
-              ? [JSONPatch{op: "remove", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/limits/cpu"}] : [],
+              ? [JSONPatch{op: "remove", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/limits/cpu"}] : [],
             !has(c.resources)
-              ? [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
+              ? [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
               : !has(c.resources.requests)
-                ? [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
-                : [JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/resources/requests/memory", value: "0"}]
-          ].flatten()).flatten()
-          +
-          object.spec.?initContainers.orValue([]).map(c, [
-            (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
-              ? [JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/cpu"}] : [],
-            (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
-              ? [JSONPatch{op: "remove", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/limits/cpu"}] : [],
-            !has(c.resources)
-              ? [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
-              : !has(c.resources.requests)
-                ? [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
-                : [JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/resources/requests/memory", value: "0"}]
-          ].flatten()).flatten()
+                ? [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
+                : [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests/memory", value: "0"}]
+          ].flatten()).flatten()).flatten()
