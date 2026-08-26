@@ -45,3 +45,34 @@ patches:
       version: v1
       kind: Deployment
       name: kyverno-reports-controller
+  # Kyverno's admission-controller caches the cluster's CRD -> GVR mapping and only refreshes it every
+  # --resyncPeriod (15m default) unless --crdWatcher=true starts an informer that invalidates the cache
+  # immediately on CRD add/update/delete (kyverno/kyverno#10729, fixed by kyverno/kyverno#13141, but
+  # off by default even in v1.19.0 - it's a helm-chart-only opt-in, install.yaml never sets it). Without
+  # this, any CRD installed *after* Kyverno starts (e.g. DataSciencePipelinesApplication, created here by
+  # DSPO's ArgoCD sync partway through deploy.py) can 404 out of admission for up to 15 minutes with
+  # "admission webhook ... denied the request: resource X not found in group Y" - confirmed live in CI,
+  # this made the Dashboard's "Configure pipeline server" action fail outright for force-dspa-pipelinestore-database.
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --crdWatcher=true
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kyverno-admission-controller
+  # The crdWatcher informer needs list/watch on customresourcedefinitions; install.yaml's aggregated
+  # ClusterRole only grants `get` (matching the Helm chart's default crdWatcher: false RBAC).
+  - patch: |-
+      - op: add
+        path: /rules/0/verbs/-
+        value: list
+      - op: add
+        path: /rules/0/verbs/-
+        value: watch
+    target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: ClusterRole
+      name: kyverno:admission-controller:core

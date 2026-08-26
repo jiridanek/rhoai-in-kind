@@ -233,7 +233,14 @@ def main():
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/pipelines-routes-policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/imagestream-status-policy.yaml; do sleep 1; done'")
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy --all"))
+        # These CEL-based policy types report readiness as a boolean at .status.conditionStatus.ready,
+        # not as a `Ready`-typed entry in the standard top-level .status.conditions[] that
+        # `--for=condition=Ready` looks for - that form silently never matches and just burns the
+        # full timeout (see the CI failure this fixed: all policies were actually Ready within ~2s).
+        tf.defer(None, lambda _: sh(
+            "oc wait --for=jsonpath='{.status.conditionStatus.ready}'=true mutatingpolicies.policies.kyverno.io --all"))
+        tf.defer(None, lambda _: sh(
+            "oc wait --for=jsonpath='{.status.conditionStatus.ready}'=true generatingpolicies.policies.kyverno.io --all"))
 
     with gha_log_group("Run deferred functions"):
         with tf:
@@ -346,7 +353,8 @@ def main():
         # resolution for the DataSciencePipelinesApplication kind and was observed to block
         # the readiness wait for every ClusterPolicy, not just this one (PR #70).
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/dspa-pipelinestore-policy.yaml; do sleep 1; done'")
-        tf.defer(None, lambda _: sh("oc wait --for=condition=Ready clusterpolicy/force-dspa-pipelinestore-database"))
+        tf.defer(None, lambda _: sh(
+            "oc wait --for=jsonpath='{.status.conditionStatus.ready}'=true mutatingpolicy.policies.kyverno.io/force-dspa-pipelinestore-database"))
 
     with gha_log_group("Install KF Notebooks"):
         sh("kubectl apply -k components/09-kf-notebooks")

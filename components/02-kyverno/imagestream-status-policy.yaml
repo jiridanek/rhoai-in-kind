@@ -30,8 +30,8 @@ subjects:
     name: kyverno-reports-controller
     namespace: kyverno
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy # Use Policy for a specific namespace
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: mutate-imagestream-add-simplified-status
   annotations:
@@ -39,7 +39,6 @@ metadata:
     policies.kyverno.io/category: Mutation
     policies.kyverno.io/severity: medium # Medium due to potential conflicts with controller
     policies.kyverno.io/subject: ImageStream, Status
-    policies.kyverno.io/minversion: 1.6.0 # Requires foreach
     policies.kyverno.io/description: >-
       Mutates ImageStream resources on create/update to add a simplified status.tags
       field derived directly from spec.tags.
@@ -48,36 +47,42 @@ metadata:
       populated by the OpenShift Image Registry controller and may conflict with it.
       It primarily extracts tag name, image reference, SHA, and generation from the spec.
 spec:
-  validationFailureAction: Audit # Use Audit to avoid blocking requests if mutation fails unexpectedly
-  background: false # Mutations should generally run in the foreground
-  rules:
-    - name: mutate-imagestream-add-simplified-status-tags
-      match:
-        any:
-          - resources:
-              kinds:
-                - ImageStream
-      # Preconditions can help avoid unnecessary mutations, e.g., only if status is missing
-      # preconditions:
-      #   all:
-      #   - key: "{{ request.object.status || '' }}" # Check if status exists
-      #     operator: Equals
-      #     value: ""
-      mutate:
-        foreach:
-          - list: "request.object.spec.tags"
-            # E0519 11:26:30.606992       1 reflector.go:147] go/pkg/mod/k8s.io/client-go@v0.29.0/tools/cache/reflector.go:229: Failed to watch *v1.ImageStream: failed to list *v1.ImageStream:
-            #  json: cannot unmarshal string into Go struct field TagEvent.items.status.tags.items.generation of type int64
-            patchesJson6902: |-
-              - path: /status/tags/-
-                op: add
-                value:
-                  tag: "{{ element.name }}"
-                  items:
-                    - dockerImageReference: "{{ element.from.name || '' }}"
-                      image: "{{ split(element.from.name || '', '@')[1] || '' }}"
-                      generation: {{ request.object.metadata.generation || '0' }}
-                      created: "{{ time_now_utc() }}"
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["image.openshift.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["imagestreams"]
+  mutations:
+    - patchType: JSONPatch
+      jsonPatch:
+        # E0519 11:26:30.606992       1 reflector.go:147] go/pkg/mod/k8s.io/client-go@v0.29.0/tools/cache/reflector.go:229: Failed to watch *v1.ImageStream: failed to list *v1.ImageStream:
+        #  json: cannot unmarshal string into Go struct field TagEvent.items.status.tags.items.generation of type int64
+        # This fake ImageStream CRD has no status subresource (crd/fake: "true", no `subresources:
+        # status: {}`), so a CREATE request generally omits `status` entirely - a JSONPatch "add"
+        # to "/status/tags/-" then fails with "doc is missing path" because the parent array (and
+        # even the parent "status" object) doesn't exist yet. Add the whole "/status" object in one
+        # shot instead - "add" to a top-level field always succeeds since the document root always exists.
+        expression: >-
+          [
+            JSONPatch{
+              op: "add",
+              path: "/status",
+              value: {
+                "tags": dyn(object.spec.?tags.orValue([]).map(tag, {
+                  "tag": dyn(tag.name),
+                  "items": dyn([
+                    {
+                      "dockerImageReference": dyn(tag.?from.name.orValue("")),
+                      "image": dyn(tag.?from.name.orValue("").split("@").size() > 1 ? tag.from.name.split("@")[1] : ""),
+                      "generation": dyn(int(object.metadata.?generation.orValue(0))),
+                      "created": dyn(string(time.now()))
+                    }
+                  ])
+                }))
+              }
+            }
+          ]
 #            patchStrategicMerge:
 #              status:
 #                tags:

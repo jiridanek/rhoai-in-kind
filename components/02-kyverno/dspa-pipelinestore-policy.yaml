@@ -22,8 +22,8 @@
 # kind, since that CRD doesn't exist until DSPO's manifests are actually synced. That
 # race doesn't just fail this policy - it was observed to block the readiness wait for
 # every ClusterPolicy in the earlier batch (https://github.com/jiridanek/rhoai-in-kind/pull/70).
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: force-dspa-pipelinestore-database
   annotations:
@@ -37,15 +37,25 @@ metadata:
       with a minio-credentials error, and pipeline-run submission fails with
       "Filter eq is not implemented for Kubernetes pipeline store".
 spec:
-  rules:
-    - name: force-pipelinestore-database
-      match:
-        any:
-          - resources:
-              kinds:
-                - DataSciencePipelinesApplication
-      mutate:
-        patchStrategicMerge:
-          spec:
-            apiServer:
-              pipelineStore: database
+  matchConstraints:
+    resourceRules:
+      # Legacy ClusterPolicy matched by `kinds: [DataSciencePipelinesApplication]` alone (version-agnostic);
+      # "*" is the CEL/native-admission-matching equivalent and is valid RuleWithOperations syntax.
+      # (A same-symptom CI failure was initially misattributed to this wildcard - live-repro proved "*"
+      # works fine; the real cause was Kyverno's discovery-cache staleness, see kustomization.yaml's
+      # --crdWatcher patch.)
+      - apiGroups: ["datasciencepipelinesapplications.opendatahub.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["datasciencepipelinesapplications"]
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >-
+          Object{
+            spec: Object.spec{
+              apiServer: Object.spec.apiServer{
+                pipelineStore: "database"
+              }
+            }
+          }

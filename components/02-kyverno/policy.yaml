@@ -1,6 +1,6 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
 metadata:
   name: sync-ca-configmap
   annotations:
@@ -12,122 +12,152 @@ metadata:
       and new namespaces. This ensures that all workloads can easily mount
       and trust a common cluster-wide CA.
 spec:
-  rules:
-    - name: generate-ca-configmap-in-all-ns
-      match:
-        any:
-          - resources:
-              kinds:
-                - Namespace
-      generate:
-        # Use synchronize to add the resource to existing namespaces and keep it in sync.
-        synchronize: true
-        apiVersion: v1
-        kind: ConfigMap
-        name: odh-trusted-ca-bundle
-        # Use a variable to place the ConfigMap in the triggering namespace.
-        namespace: "{{request.object.metadata.name}}"
-        # Clone the data from a source ConfigMap.
-        clone:
-          namespace: cert-manager
-          name: odh-trusted-ca-bundle
+  evaluation:
+    # Add the resource to existing namespaces (generateExisting) and keep it in sync (synchronize).
+    generateExisting:
+      enabled: true
+    synchronize:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["namespaces"]
+  variables:
+    - name: nsName
+      expression: object.metadata.name
+    - name: source
+      expression: resource.Get("v1", "configmaps", "cert-manager", "odh-trusted-ca-bundle")
+  generate:
+    - expression: >-
+        generator.Apply(variables.nsName, [variables.source])
 ---
 # We need to add openshift-service-ca.crt configmap to every namespace,
 # the way it would happen on OpenShift. Otherwise DSPA does not reconcile.
 
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
 metadata:
   name: openshift-like-sa-cm
 spec:
-  rules:
-    # https://kyverno.io/policies/other/sync-secrets/sync-secrets/
-    - name: sync-openshift-sa-config-map
-      match:
-        any:
-          - resources:
-              kinds:
-                - Namespace
-                #              namespaceSelector:
-                #                matchExpressions:
-                #                  - key: openshift-like
-                #                    operator: In
-                #                    values:
-                #                      - "true"
-      generate:
-        # https://kyverno.io/docs/writing-policies/generate/#generate-for-existing-resources
-        generateExisting: true
-        apiVersion: v1
-        kind: ConfigMap
-        name: openshift-service-ca.crt
-        namespace: "{{request.object.metadata.name}}"
-        data:
+  evaluation:
+    # https://kyverno.io/docs/policy-types/generating-policy/ - retroactively generate for existing namespaces too.
+    generateExisting:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["namespaces"]
+  variables:
+    - name: nsName
+      expression: object.metadata.name
+  generate:
+    - template:
+        interpolate: cel
+        value: |
+          apiVersion: v1
+          kind: ConfigMap
           metadata:
+            name: openshift-service-ca.crt
+            namespace: (( variables.nsName ))
             annotations:
-              "service.beta.openshift.io/inject-cabundle": "true"
+              service.beta.openshift.io/inject-cabundle: "true"
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: openshift-like-volume-mounts
 spec:
-  rules:
-    - name: set-serviceaccount-volume-mounts
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              # https://kyverno.io/docs/writing-policies/match-exclude/#match-deployments-in-namespaces-using-labels
-              namespaceSelector:
-                matchLabels:
-                  opendatahub.io/dashboard: "true"
-      context:
-        # https://jmespath.org/specification.html#to-number
-        # https://kyverno.io/docs/writing-policies/jmespath/#random
-        - name: randomuid
-          variable:
-            jmesPath: to_number(random('[1-9][0-9]{4}'))
-      mutate:
-        patchStrategicMerge:
-          spec:
-            # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
-            initContainers:
-              - (name): "*"
-                volumeMounts:
-                  - name: "service-ca-kube-api-access"
-                    readOnly: true
-                    mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-            containers:
-              - (name): "*"
-                volumeMounts:
-                  - name: "service-ca-kube-api-access"
-                    readOnly: true
-                    mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-            volumes:
-              - name: "service-ca-kube-api-access"
-                projected:
-                  sources:
-                    - serviceAccountToken:
-                        expirationSeconds: 3607
-                        path: token
-                    - configMap:
-                        name: kube-root-ca.crt
-                        items:
-                          - key: ca.crt
-                            path: ca.crt
-                    - downwardAPI:
-                        items:
-                          - path: namespace
-                            fieldRef:
-                              apiVersion: v1
-                              fieldPath: metadata.namespace
-                    - configMap:
-                        name: openshift-service-ca.crt
-                        items:
-                          - key: service-ca.crt
-                            path: service-ca.crt
-                  defaultMode: 420
+  # Legacy ClusterPolicy only matched bare Pods (no pod-controller autogen annotation); MutatingPolicy
+  # autogenerates variant rules for Deployment/StatefulSet/Job/CronJob pod templates by default, but our
+  # CEL expressions assume a Pod-shaped `object` (object.spec.containers) and error on those autogenerated
+  # variants ("no such key: containers", since e.g. Deployment.spec has no top-level `containers`).
+  autogen:
+    podControllers:
+      controllers: []
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+    namespaceSelector:
+      matchLabels:
+        opendatahub.io/dashboard: "true"
+  variables:
+    - name: saMountPath
+      expression: '"/var/run/secrets/kubernetes.io/serviceaccount"'
+    - name: volumeMount
+      expression: >-
+        {
+          "name": dyn("service-ca-kube-api-access"),
+          "readOnly": dyn(true),
+          "mountPath": dyn(variables.saMountPath)
+        }
+    - name: volume
+      expression: >-
+        {
+          "name": dyn("service-ca-kube-api-access"),
+          "projected": dyn({
+            "sources": dyn([
+              {"serviceAccountToken": dyn({"expirationSeconds": dyn(3607), "path": dyn("token")})},
+              {"configMap": dyn({"name": dyn("kube-root-ca.crt"), "items": dyn([{"key": dyn("ca.crt"), "path": dyn("ca.crt")}])})},
+              {"downwardAPI": dyn({"items": dyn([{"path": dyn("namespace"), "fieldRef": dyn({"apiVersion": dyn("v1"), "fieldPath": dyn("metadata.namespace")})}])})},
+              {"configMap": dyn({"name": dyn("openshift-service-ca.crt"), "items": dyn([{"key": dyn("service-ca.crt"), "path": dyn("service-ca.crt")}])})}
+            ]),
+            "defaultMode": dyn(420)
+          })
+        }
+  mutations:
+    # https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+    # JSONPatch (not ApplyConfiguration) because the deeply-nested projected-volume-source fields are
+    # k8s API atomic lists/structs, which ApplyConfiguration's structured merge rejects outright
+    # ("may not mutate atomic arrays, maps or structs") even for a brand-new volume with no prior owner.
+    # `(name): "*"` (legacy wildcard anchor) becomes an explicit `map()` producing one op per container/initContainer.
+    # IMPORTANT: Kubernetes' own strategic-merge-patch key for Container.volumeMounts is `mountPath`, not
+    # `name` - so the legacy patchStrategicMerge silently REPLACED the default service-account-token mount
+    # (which every Pod gets unless automountServiceAccountToken: false) rather than adding a second entry
+    # at the same path. A plain JSONPatch "add" doesn't get that merge-key behavior for free and instead
+    # creates a real duplicate, which the apiserver's own Pod validation rejects with "must be unique"
+    # (confirmed live: this broke every notebook Pod in CI). Replicate the merge-by-mountPath explicitly:
+    # if a volumeMount at our target path already exists, "replace" it in place; otherwise append/create.
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >-
+          object.spec.containers.map(c,
+            (has(c.volumeMounts) && c.volumeMounts.exists(vm, vm.mountPath == variables.saMountPath))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts/" + string(c.volumeMounts.map(vm, vm.mountPath).indexOf(variables.saMountPath)),
+                  value: variables.volumeMount
+                }
+              : has(c.volumeMounts)
+                ? JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts/-", value: variables.volumeMount}
+                : JSONPatch{op: "add", path: "/spec/containers/" + string(object.spec.containers.indexOf(c)) + "/volumeMounts", value: dyn([variables.volumeMount])}
+          )
+          +
+          object.spec.?initContainers.orValue([]).map(c,
+            (has(c.volumeMounts) && c.volumeMounts.exists(vm, vm.mountPath == variables.saMountPath))
+              ? JSONPatch{
+                  op: "replace",
+                  path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts/" + string(c.volumeMounts.map(vm, vm.mountPath).indexOf(variables.saMountPath)),
+                  value: variables.volumeMount
+                }
+              : has(c.volumeMounts)
+                ? JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts/-", value: variables.volumeMount}
+                : JSONPatch{op: "add", path: "/spec/initContainers/" + string(object.spec.initContainers.indexOf(c)) + "/volumeMounts", value: dyn([variables.volumeMount])}
+          )
+          +
+          [
+            JSONPatch{
+              op: "add",
+              path: has(object.spec.volumes) ? "/spec/volumes/-" : "/spec/volumes",
+              value: has(object.spec.volumes) ? variables.volume : dyn([variables.volume])
+            }
+          ]
 
 ---
 
@@ -189,8 +219,8 @@ spec:
 # Therefore, when writing such mutation rules for Pods,
 # it may be necessary to create multiple rules to cover all relevant Pod controllers.
 
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: remove-cpu-memory-requests
   annotations:
@@ -200,72 +230,47 @@ metadata:
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
       Removes the `requests` field for both CPU and memory from the `resources`
-      section of all containers in incoming workloads within namespaces labeled
-      `opendatahub.io/dashboard: "true"`. This can be useful in specific
-      environments where resource requests are not enforced or managed differently.
+      section of all containers in incoming workloads, cluster-wide (intentionally
+      NOT scoped to opendatahub.io/dashboard namespaces - system pods like
+      rhods-dashboard need this too to fit the small kind CI node's CPU budget).
 spec:
-  # # 'Audit' is safer to start. Change to 'Enforce' to block pods if mutation fails.
-  validationFailureAction: Enforce
-  # Process requests synchronously during admission control
-  background: false
-  rules:
-    - name: remove-requests
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              #namespaceSelector:
-              #  matchLabels:
-              #    opendatahub.io/dashboard: "true"
-              # override any updates from controller/statefulset
-              operations:
-                - CREATE
-                - UPDATE
-      #mutate:
-      #  patchStrategicMerge:
-      #    spec:
-      #      containers:
-      #        - (name): "*"
-      #          resources:
-      #            requests:
-      #              cpu: 0
-      #              memory: 0
-      #      initContainers:
-      #        - (name): "*"
-      #          resources:
-      #            requests:
-      #              cpu: 0
-      #              memory: 0
-      mutate:
-        foreach:
-          # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
-          - list: "request.object.spec.containers || []"
-            patchesJson6902: |-
-              - op: add
-                path: "/spec/containers/{{elementIndex}}/resources/requests/memory"
-                value: "0"
-              - op: remove
-                path: "/spec/containers/{{elementIndex}}/resources/requests/cpu"
-              - op: remove
-                path: "/spec/containers/{{elementIndex}}/resources/limits/cpu"
-          - list: "request.object.spec.initContainers || []"
-            patchesJson6902: |-
-              - op: add
-                path: "/spec/initContainers/{{elementIndex}}/resources/requests/memory"
-                value: "0"
-              - op: remove
-                path: "/spec/initContainers/{{elementIndex}}/resources/requests/cpu"
-              - op: remove
-                path: "/spec/initContainers/{{elementIndex}}/resources/limits/cpu"
-
-#      mutate:
-#        patchStrategicMerge:
-#          spec:
-#            containers:
-#              - (name): "*"
-#                resources:
-#                  requests:
-#                    $patch: delete
-#                    cpu:
-#                    memory:
+  # See openshift-like-volume-mounts above: disable autogen since our CEL expressions assume a
+  # Pod-shaped `object`, which autogenerated Deployment/StatefulSet/etc. variants don't have.
+  autogen:
+    podControllers:
+      controllers: []
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        # override any updates from controller/statefulset
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    # containers and initContainers need identical treatment, just under a different /spec/<kind>
+    # path prefix - iterate both through one shared expression below instead of duplicating it.
+    - name: containerGroups
+      expression: >-
+        [
+          {"kind": dyn("containers"), "list": dyn(object.spec.containers)},
+          {"kind": dyn("initContainers"), "list": dyn(object.spec.?initContainers.orValue([]))}
+        ]
+  mutations:
+    # https://github.com/kyverno/kyverno/issues/1713#issuecomment-2430854013
+    # "remove" errors if its target is absent and "add" errors if an intermediate parent object
+    # (resources/requests) is absent; with the default failurePolicy: Fail either would reject the
+    # whole Pod admission, so every op below is conditioned on the field actually being present.
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >-
+          variables.containerGroups.map(g, g.list.map(c, [
+            (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests/cpu"}] : [],
+            (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
+              ? [JSONPatch{op: "remove", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/limits/cpu"}] : [],
+            !has(c.resources)
+              ? [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources", value: dyn({"requests": {"memory": "0"}})}]
+              : !has(c.resources.requests)
+                ? [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests", value: dyn({"memory": "0"})}]
+                : [JSONPatch{op: "add", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests/memory", value: "0"}]
+          ].flatten()).flatten()).flatten()
