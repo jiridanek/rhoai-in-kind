@@ -232,6 +232,22 @@ def main():
         with tf:
             pass
 
+    with gha_log_group("Restart Kyverno background-controller to pick up CRDs installed after it started"):
+        # kyverno-background-controller (unlike admission-controller, see kustomization.yaml's
+        # --crdWatcher=true patch) has no CRD-watcher informer at all in v1.19.0 - its RESTMapper
+        # (pkg/utils/restmapper.GetRESTMapper) is a memory-cached discovery client built once, at
+        # leader-election time, right after the pod starts (~line 82 above). Gateway API's
+        # HTTPRoute/TLSRoute CRDs aren't installed until "Install Istio" (~line 120), well after
+        # that first discovery snapshot. Confirmed live in CI (PR #96 follow-up): every
+        # generate-httproute-for-pipeline/generate-tlsroute-for-notebook run then fails with
+        # "failed to map gvk to gvr gateway.networking.k8s.io/v1, Kind=HTTPRoute (no matches for
+        # kind ...)", which - combined with synchronize:true - permanently deletes the generated
+        # route on the very next reconcile (see PR #96 / issue #95). Restarting the deployment here,
+        # after every CRD this repo's policies generate/watch has been installed, forces a fresh
+        # RESTMapper on the next leader-election.
+        sh("kubectl -n kyverno rollout restart deployment/kyverno-background-controller")
+        sh("kubectl -n kyverno rollout status deployment/kyverno-background-controller --timeout=120s")
+
     with gha_log_group("Install Kyverno policies"):
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/policy.yaml; do sleep 1; done'")
         sh("timeout 30s bash -c 'while ! kubectl apply -f components/02-kyverno/notebook-routes-policy.yaml; do sleep 1; done'")
