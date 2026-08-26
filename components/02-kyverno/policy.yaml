@@ -121,6 +121,14 @@ spec:
           "name": dyn("SSL_CERT_FILE"),
           "value": dyn(variables.caBundlePath)
         }
+    # `odh-trusted-ca-bundle`'s configMap source below is marked optional: true - sync-ca-configmap's
+    # GeneratingPolicy creates it in reaction to the Namespace CREATE event, so it can lag a few
+    # seconds behind; without `optional`, kubelet's MountVolume.SetUp hard-fails with "configmap ...
+    # not found" and blocks the pod forever (confirmed live in CI: broke mariadb-dspa, which then
+    # blocked DSPA's "at least 7 pods running" check for the whole test). A pod that races and starts
+    # before the configmap exists just runs without the mounted CA/SSL_CERT_FILE trust for its
+    # lifetime - acceptable, since the pod that actually needs it (DSPO) is created via ArgoCD sync
+    # well after redhat-ods-applications' namespace creation and CA sync have both long settled.
     - name: volume
       expression: >-
         {
@@ -131,7 +139,7 @@ spec:
               {"configMap": dyn({"name": dyn("kube-root-ca.crt"), "items": dyn([{"key": dyn("ca.crt"), "path": dyn("ca.crt")}])})},
               {"downwardAPI": dyn({"items": dyn([{"path": dyn("namespace"), "fieldRef": dyn({"apiVersion": dyn("v1"), "fieldPath": dyn("metadata.namespace")})}])})},
               {"configMap": dyn({"name": dyn("openshift-service-ca.crt"), "items": dyn([{"key": dyn("service-ca.crt"), "path": dyn("service-ca.crt")}])})},
-              {"configMap": dyn({"name": dyn("odh-trusted-ca-bundle"), "items": dyn([{"key": dyn("combined-ca-bundle.crt"), "path": dyn("combined-ca-bundle.crt")}])})}
+              {"configMap": dyn({"name": dyn("odh-trusted-ca-bundle"), "optional": dyn(true), "items": dyn([{"key": dyn("combined-ca-bundle.crt"), "path": dyn("combined-ca-bundle.crt")}])})}
             ]),
             "defaultMode": dyn(420)
           })
