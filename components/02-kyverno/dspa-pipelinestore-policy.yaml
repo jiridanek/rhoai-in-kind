@@ -39,13 +39,13 @@ metadata:
 spec:
   matchConstraints:
     resourceRules:
-      # Legacy ClusterPolicy matched by `kinds: [DataSciencePipelinesApplication]` alone (version-agnostic).
-      # CEL's admission-time GVR resolution doesn't accept `apiVersions: ["*"]` as a real wildcard the way
-      # native ValidatingWebhookConfiguration does - it errors "resource ... not found in group .../v1"
-      # (confirmed live in CI: this made the Dashboard's "Configure pipeline server" fail outright with
-      # that exact admission-webhook-denied error). List every version the CRD actually serves instead.
+      # Legacy ClusterPolicy matched by `kinds: [DataSciencePipelinesApplication]` alone (version-agnostic);
+      # "*" is the CEL/native-admission-matching equivalent and is valid RuleWithOperations syntax.
+      # (A same-symptom CI failure was initially misattributed to this wildcard - live-repro proved "*"
+      # works fine; the real cause was Kyverno's discovery-cache staleness, see kustomization.yaml's
+      # --crdWatcher patch.)
       - apiGroups: ["datasciencepipelinesapplications.opendatahub.io"]
-        apiVersions: ["v1", "v1alpha1"]
+        apiVersions: ["*"]
         operations: ["CREATE", "UPDATE"]
         resources: ["datasciencepipelinesapplications"]
   mutations:
