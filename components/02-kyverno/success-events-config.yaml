@@ -1,0 +1,16 @@
+---
+# https://github.com/kyverno/kyverno/pull/15466 (v1.18.0): let the ConfigMap filter *which* success
+# events the engine emits, so `kubectl get events` gives a direct answer to "did this mutate/generate
+# policy actually fire" instead of digging through pod logs or screenshots (a recurring debugging
+# pattern in this project's CI triage, e.g. the imagestream-status and dspa-pipelinestore policies).
+# generateSuccessEvents is the master switch (off by default); successEventActions narrows it to just
+# the two action kinds this project's policies produce - see
+# https://github.com/kyverno/kyverno/blob/v1.19.0/pkg/event/action.go for the full action list.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kyverno
+  namespace: kyverno
+data:
+  generateSuccessEvents: "true"
+  successEventActions: "Resource Mutated,Resource Generated"
