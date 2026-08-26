@@ -189,12 +189,16 @@ def main():
 
     with gha_log_group(f"Run kubectl create namespaces {REDHAT_ODS_APPLICATIONS}"):
         sh(f"kubectl get namespace {REDHAT_ODS_APPLICATIONS} || kubectl create namespace {REDHAT_ODS_APPLICATIONS}")
+        # DSPO's reconciler pod runs here and needs to trust MinIO's TLS cert (#89); labeling with
+        # opendatahub.io/dashboard would also work but pollutes the Dashboard's project list (#90).
+        sh(f"kubectl label namespace {REDHAT_ODS_APPLICATIONS} rhoai-in-kind.io/inject-openshift-ca=true --overwrite")
 
     with gha_log_group(f"Setup {RHODS_NOTEBOOKS} namespace"):
         # c.f. dashboard's validateNotebookNamespaceRoleBinding
         # it will create rolebinding ${notebookNamespace}-image-pullers in dashboardNamespace
         # and it needs a clusterrole system:image-puller to exist, which does not exsist on kind by default
         sh(f"kubectl get namespace {RHODS_NOTEBOOKS} || kubectl create namespace {RHODS_NOTEBOOKS}")
+        sh(f"kubectl label namespace {RHODS_NOTEBOOKS} rhoai-in-kind.io/inject-openshift-ca=true --overwrite")
         # dummy verb and resource, just to have something there
         sh("kubectl create clusterrole system:image-puller --verb=list --resource=imagestreams.image.openshift.io --dry-run=client -o yaml | kubectl apply -f -")
         # I have no idea why the next line was needed; it is not mentioned in dashboard sources except in manifests
@@ -340,6 +344,15 @@ def main():
     with gha_log_group("Install KF Pipelines"):
         # dspa is looking up configmaps in this namespace
         # sh("kubectl create namespace openshift-config-managed --dry-run=client -o yaml | kubectl apply -f -")
+
+        # sync-ca-configmap's GeneratingPolicy creates odh-trusted-ca-bundle here in reaction to
+        # this namespace's earlier Namespace CREATE event, so it can lag a few seconds - and
+        # Kyverno's policies aren't even installed yet at that point (they're applied later,
+        # below), so this actually depends on generateExisting doing a retroactive background
+        # scan. DSPO's own pod (started by the ArgoCD sync right below) needs this configmap's
+        # combined-ca-bundle.crt to trust MinIO's TLS cert (#89) - wait for it explicitly rather
+        # than relying on the many intervening deploy steps to provide enough of a buffer.
+        sh(f"timeout 60s bash -c 'while ! kubectl get configmap odh-trusted-ca-bundle -n {REDHAT_ODS_APPLICATIONS} >/dev/null 2>&1; do sleep 1; done'")
 
         sh(argocd_sync_cmd("kf-pipelines"))
 
