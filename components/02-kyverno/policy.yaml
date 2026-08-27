@@ -20,9 +20,23 @@ spec:
       enabled: true
   matchConstraints:
     resourceRules:
+      # UPDATE is required, not just CREATE (found alongside #95's root cause; this policy
+      # was in scope of the same CEL-migration regression, PR #88): the propagate-ca-injection-label
+      # MutatingPolicy below always fires an UPDATE on any Namespace that ods-ci/the Dashboard
+      # labels opendatahub.io/dashboard=true, shortly after it's created. With synchronize:
+      # true and only CREATE listed here, that UPDATE makes Kyverno's background controller
+      # decide this policy's trigger "no longer matches" and delete the ConfigMap it just
+      # generated. Confirmed live via kyverno-background-controller logs ("trigger no longer
+      # matches the policy, deleting downstream resources"). Unlike the Route-triggered
+      # policies in pipelines-routes-policy.yaml/notebook-routes-policy.yaml (which never
+      # recover, since nothing ever re-CREATEs a Route), this one's generateExisting: true
+      # periodically re-scans all namespaces and regenerates the ConfigMap - so the practical
+      # symptom here was a transient flap/race rather than a permanent loss, previously
+      # (mis)diagnosed as a generic "boot race" (see the commit marking this ConfigMap's volume
+      # source `optional: true` in openshift-like-volume-mounts below).
       - apiGroups: [""]
         apiVersions: ["v1"]
-        operations: ["CREATE"]
+        operations: ["CREATE", "UPDATE"]
         resources: ["namespaces"]
   variables:
     - name: nsName

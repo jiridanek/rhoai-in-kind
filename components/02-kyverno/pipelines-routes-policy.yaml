@@ -1,7 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kyverno-route-tlsroute-manager
+  # NOTE: notebook-routes-policy.yaml defines its own kyverno-notebook-route-manager
+  # ClusterRole under a distinct name - see the comment there for why (#95): this file and
+  # that one used to share the name "kyverno-route-tlsroute-manager" with different rule
+  # sets, and whichever was applied last silently clobbered the other's RBAC grants.
+  name: kyverno-pipeline-route-manager
 rules:
   - apiGroups:
       - gateway.networking.k8s.io
@@ -63,11 +67,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kyverno-bind-route-tlsroute-manager-pipelines
+  name: kyverno-bind-pipeline-route-manager
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kyverno-route-tlsroute-manager
+  name: kyverno-pipeline-route-manager
 subjects:
   - kind: ServiceAccount
     name: kyverno-admission-controller
@@ -97,9 +101,17 @@ spec:
       enabled: true
   matchConstraints:
     resourceRules:
+      # UPDATE is required, not just CREATE (see the matching comment on
+      # generate-httproute-for-pipeline below, and issue #95): DSPO re-applies/patches its
+      # owned Services during normal reconciliation shortly after creating them. With
+      # synchronize: true and only CREATE listed here, that very next UPDATE makes Kyverno's
+      # background controller decide this policy's trigger "no longer matches" and delete the
+      # DestinationRule it just generated - permanently, since no further CREATE ever happens
+      # for that Service. Confirmed live: without a DestinationRule, mTLS from the gateway to
+      # the pipelines API server fails, breaking Elyra pipeline submission entirely.
       - apiGroups: [""]
         apiVersions: ["v1"]
-        operations: ["CREATE"]
+        operations: ["CREATE", "UPDATE"]
         resources: ["services"]
   matchConditions:
     - name: has-dspa-owner
@@ -152,9 +164,21 @@ spec:
       enabled: true
   matchConstraints:
     resourceRules:
+      # UPDATE is required, not just CREATE (root cause of #95's Elyra pipeline-submission
+      # failure): the update-route-host-for-pipeline MutatingPolicy below always fires an
+      # UPDATE on the Route right after DSPO creates it (to set spec.host, since DSPO creates
+      # the Route with an empty host). With synchronize: true and only CREATE listed here,
+      # Kyverno's background controller re-evaluates this GeneratingPolicy's match on that very
+      # next UPDATE event, decides its own trigger "no longer matches" (operations: ["CREATE"]
+      # doesn't cover UPDATE), and immediately deletes the HTTPRoute it just generated -
+      # permanently, since no further CREATE ever happens for that Route. Confirmed live: the
+      # HTTPRoute is generated then torn down within the same second, every time, leaving the
+      # pipelines API server completely unroutable (any request 404s at the gateway) - which is
+      # what actually broke Elyra's kfp.Client() in #95, not the URL's missing "/pipeline"
+      # suffix that its error message misleadingly suggests.
       - apiGroups: ["route.openshift.io"]
         apiVersions: ["v1"]
-        operations: ["CREATE"]
+        operations: ["CREATE", "UPDATE"]
         resources: ["routes"]
   matchConditions:
     - name: has-dspa-owner
