@@ -327,11 +327,16 @@ def main():
         # rather than core mode: core mode's ephemeral repo-server port-forward is fragile under
         # load (mux: server closed). https://github.com/jiridanek/rhoai-in-kind/issues/40
         # `set +x` in the inner shell keeps the admin password out of the `set -x` trace.
+        # Feed the password on stdin instead of argv: `argocd login` (v3.2.0+; #23520) falls
+        # back to reading the password from stdin when `--password` is omitted and stdin is
+        # not a TTY. `printf '%s\n'` (bash builtin, no argv-visible child process) guarantees
+        # the trailing newline PromptPassword expects.
         sh(
             f"""timeout {ARGOCD_LOGIN_TIMEOUT} bash -c '
                 set +x
                 pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{{.data.password}}" | base64 --decode)
-                while ! argocd login argocd.apps.127.0.0.1.sslip.io --username admin --password "$pw" --grpc-web --insecure; do sleep 2; done
+                while ! printf "%s\\n" "$pw" | argocd login argocd.apps.127.0.0.1.sslip.io --username admin \
+                        --grpc-web --insecure; do sleep 2; done
             '"""
         )
         # No `argocd cluster add` needed: every Application targets the in-cluster endpoint
