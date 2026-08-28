@@ -6,6 +6,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_repo:
+        description: 'opendatahub-tests repo to check out (owner/name)'
+        default: 'opendatahub-io/opendatahub-tests'
+      test_ref:
+        description: 'opendatahub-tests branch/tag/SHA to check out'
+        default: '94670b336c632ac2c0022b347444b687d9384327'
   schedule:
     - cron: '0 2 * * *' # at 02:00
 
@@ -29,8 +36,10 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          repository: opendatahub-io/opendatahub-tests
-          ref: 94670b336c632ac2c0022b347444b687d9384327  # Sept 18, 2025 - last known working
+          # Default ref: Sept 18, 2025 - last known working. Override via workflow_dispatch
+          # inputs to test against a fork/branch without editing this file - see #35.
+          repository: ${{ inputs.test_repo || 'opendatahub-io/opendatahub-tests' }}
+          ref: ${{ inputs.test_ref || '94670b336c632ac2c0022b347444b687d9384327' }}
           path: opendatahub-tests
 
       # Otherwise we may end up with a random Python version?
