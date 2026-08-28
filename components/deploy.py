@@ -9,7 +9,9 @@ import sys
 import textwrap
 
 import logfire
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcOTLPSpanExporter
 from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 import certs
 
@@ -64,17 +66,49 @@ def argocd_sync_cmd(app: str) -> str:
     )
 
 
-def main():
+def _grpc_otlp_span_processor() -> BatchSpanProcessor | None:
+    # logfire.configure() auto-adds its own OTLP exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT
+    # is set, but that exporter is hardcoded to HTTP/protobuf - it silently ignores
+    # OTEL_EXPORTER_OTLP_PROTOCOL=grpc (confirmed against logfire._internal.config source).
+    # IntelliJ's bundled OTel collector only speaks gRPC, so build the gRPC exporter ourselves
+    # and register it via additional_span_processors instead of letting logfire's own
+    # env-based detection wire up the (here, incompatible) HTTP one.
+    if os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") != "grpc":
+        return None
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return None
+    return BatchSpanProcessor(GrpcOTLPSpanExporter(endpoint=endpoint))
+
+
+def configure_tracing():
     # console tree locally for progress visibility; GHA's own ::group:: folding covers that
     # in CI, so the console tree would just be redundant/noisy there. OTLP export (independent
     # of both) is handled by the SDK itself via OTEL_EXPORTER_OTLP_ENDPOINT, if set.
-    logfire.configure(
-        service_name="rhoai-deploy-script",
-        send_to_logfire=False,
-        # console expects None (default on) or False - not a plain bool.
-        console=None if "CI" not in os.environ else False,
-    )
+    grpc_processor = _grpc_otlp_span_processor()
+    # Hide the endpoint from logfire's own auto-detection so it doesn't also add its
+    # (incompatible, for grpc) HTTP exporter on top of ours.
+    saved_otlp_endpoint = os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None) if grpc_processor else None
+    saved_otlp_traces_endpoint = os.environ.pop("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", None) if grpc_processor else None
+    try:
+        logfire.configure(
+            service_name="rhoai-deploy-script",
+            send_to_logfire=False,
+            # console expects None (default on) or False - not a plain bool.
+            console=None if "CI" not in os.environ else False,
+            additional_span_processors=[grpc_processor] if grpc_processor else None,
+        )
+    finally:
+        if saved_otlp_endpoint is not None:
+            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = saved_otlp_endpoint
+        if saved_otlp_traces_endpoint is not None:
+            os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = saved_otlp_traces_endpoint
+
     BotocoreInstrumentor().instrument()
+
+
+def main():
+    configure_tracing()
 
     tf = TestFrame()
 
