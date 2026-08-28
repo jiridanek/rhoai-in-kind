@@ -66,7 +66,7 @@ jobs:
       # CAUTION: must match node_image below - a drifted pre-pull is silently a no-op (see the
       # istio pre-pull's own history of this exact bug).
       - name: Pre-pull the kind image
-        run: timeout 120s bash -c 'while ! docker pull docker.io/kindest/node:v1.34.11@sha256:2ddcf275136744ef219498fe56ffe858f7c5c6281fa7304d6298c5c75c8a9998; do sleep 1; done'
+        run: timeout 120s bash -c 'while ! docker pull docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d; do sleep 1; done'
 
       - name: Kubernetes KinD Cluster
         id: kind-cluster
@@ -87,7 +87,7 @@ jobs:
           # odh-dashboard main as of this writing. v1.34.11 is the latest kind image still on the
           # pre-v1.35 kubelet message format, and matches what OpenShift 4.21 itself ships.
           # https://hub.docker.com/r/kindest/node/tags
-          node_image: "docker.io/kindest/node:v1.34.11@sha256:2ddcf275136744ef219498fe56ffe858f7c5c6281fa7304d6298c5c75c8a9998"
+          node_image: "docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d"
           cluster_name: kind
           config: components/00-kind-cluster.yaml
 
