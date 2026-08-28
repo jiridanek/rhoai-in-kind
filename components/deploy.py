@@ -109,14 +109,6 @@ def configure_tracing():
 
 def main():
     configure_tracing()
-    _main()
-
-
-# One root span for the whole run, so all the gha_log_group/sh spans below nest under a
-# single trace instead of each step showing up as its own separate top-level trace.
-@logfire.instrument("deploy.py run")
-def _main():
-    tf = TestFrame()
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -126,7 +118,16 @@ def _main():
         required=not os.environ.get("WORKBENCH_BRANCH"),
     )
     args = parser.parse_args()
-    workbench_branch = args.workbench_branch
+
+    deploy(args.workbench_branch)
+
+
+# One root span for the whole run, so all the gha_log_group/sh spans below nest under a
+# single trace instead of each step showing up as its own separate top-level trace.
+# {workbench_branch=} in the span name records the argument as a span attribute too.
+@logfire.instrument("deploy.py run {workbench_branch=}")
+def deploy(workbench_branch: str):
+    tf = TestFrame()
 
     # slow to deploy so do it first
     with gha_log_group("Install Kyverno"):

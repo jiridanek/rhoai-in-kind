@@ -22,7 +22,11 @@ def sh(
     """Runs a shell command."""
     # No-op without a configured provider (logfire.configure() is only called by entrypoint
     # scripts like deploy.py), so this is safe to leave unconditional here.
-    with logfire.span("sh {cmd}", cmd=cmd[:120]):
+    # WARNING: the full cmd string is recorded as a span attribute, so any secret embedded
+    # directly in it (not fetched at runtime inside a nested `bash -c`) leaks into the trace
+    # backend. This is accepted: this repo only ever handles disposable local
+    # kind-cluster/CI credentials, never production secrets.
+    with logfire.span("sh {cmd}", cmd=cmd):
         env = env or {}
         print(f"$ {cmd}", file=sys.stdout)
         sys.stdout.flush()
