@@ -134,5 +134,5 @@ jobs:
         uses: actions/upload-artifact@v7
         if: "steps.collect-logs.outputs.debug_bundle_dir != '' && !cancelled()"
         with:
-          name: cluster-logs-${{ steps.artifact-name.outputs.artifact-name }}
+          name: cluster-logs-${{ matrix.workbench_branch }}
           path: ${{ steps.collect-logs.outputs.debug_bundle_dir }}

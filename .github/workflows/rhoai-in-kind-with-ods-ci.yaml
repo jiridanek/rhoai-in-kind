@@ -245,8 +245,7 @@ jobs:
           curl -LO "https://dl.k8s.io/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
           
           # Verify the kubectl binary against the checksum
-          echo "$(cat kubectl.sha256) kubectl" | sha256sum --check
-          if [ $? -ne 0 ]; then
+          if ! echo "$(cat kubectl.sha256) kubectl" | sha256sum --check; then
             echo "Checksum validation failed!"
             exit 1
           fi
