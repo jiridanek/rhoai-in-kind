@@ -109,18 +109,12 @@ def configure_tracing():
 
 def main():
     configure_tracing()
-
-    # One root span for the whole run, so all the gha_log_group/sh spans below nest under a
-    # single trace instead of each step showing up as its own separate top-level trace.
-    # Entered/exited manually (not `with`) to avoid re-indenting the entire function body.
-    run_span = logfire.span("deploy.py run")
-    run_span.__enter__()
-    try:
-        _main()
-    finally:
-        run_span.__exit__(*sys.exc_info())
+    _main()
 
 
+# One root span for the whole run, so all the gha_log_group/sh spans below nest under a
+# single trace instead of each step showing up as its own separate top-level trace.
+@logfire.instrument("deploy.py run")
 def _main():
     tf = TestFrame()
 
