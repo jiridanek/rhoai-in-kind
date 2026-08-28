@@ -40,7 +40,7 @@ No compile step. "Building" this project means recreating the cluster:
 
 ```bash
 kind delete cluster --name kind   # only if one already exists
-kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
+kind create cluster --config components/00-kind-cluster.yaml --image docker.io/kindest/node:v1.34.11@sha256:2ddcf275136744ef219498fe56ffe858f7c5c6281fa7304d6298c5c75c8a9998
 ```
 
 `kind create cluster` sets kubeconfig's current-context to `kind-kind`
