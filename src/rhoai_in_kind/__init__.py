@@ -26,7 +26,9 @@ def sh(
     # directly in it (not fetched at runtime inside a nested `bash -c`) leaks into the trace
     # backend. This is accepted: this repo only ever handles disposable local
     # kind-cluster/CI credentials, never production secrets.
-    with logfire.span("sh {cmd}", cmd=cmd):
+    # _span_name is pre-formatted (not the raw "{cmd}" template) so generic OTel viewers
+    # (e.g. the Aspire dashboard), which display the literal span name, show the real command.
+    with logfire.span("sh {cmd}", _span_name=f"sh {cmd}", cmd=cmd):
         env = env or {}
         print(f"$ {cmd}", file=sys.stdout)
         sys.stdout.flush()

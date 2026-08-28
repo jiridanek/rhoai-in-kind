@@ -122,11 +122,21 @@ def main():
     deploy(args.workbench_branch)
 
 
-# One root span for the whole run, so all the gha_log_group/sh spans below nest under a
-# single trace instead of each step showing up as its own separate top-level trace.
-# {workbench_branch=} in the span name records the argument as a span attribute too.
-@logfire.instrument("deploy.py run {workbench_branch=}")
 def deploy(workbench_branch: str):
+    # One root span for the whole run, so all the gha_log_group/sh spans below nest under a
+    # single trace instead of each step showing up as its own separate top-level trace.
+    # `{workbench_branch=}` only expands into logfire's own "message" attribute, not the
+    # literal OTel span name that generic viewers (e.g. the Aspire dashboard) display - so
+    # _span_name is set explicitly, pre-formatted, to make the branch show up there too.
+    with logfire.span(
+        "deploy.py run {workbench_branch=}",
+        _span_name=f"deploy.py run workbench_branch={workbench_branch}",
+        workbench_branch=workbench_branch,
+    ):
+        _deploy(workbench_branch)
+
+
+def _deploy(workbench_branch: str):
     tf = TestFrame()
 
     # slow to deploy so do it first
