@@ -6,6 +6,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_repo:
+        description: 'odh-dashboard repo to check out (owner/name)'
+        default: 'opendatahub-io/odh-dashboard'
+      test_ref:
+        description: 'odh-dashboard branch/tag/SHA to check out'
+        default: 'v2.37.1-odh'
   schedule:
     - cron: '0 2 * * *' # at 02:00
 
@@ -44,10 +51,12 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          repository: opendatahub-io/odh-dashboard
-          # Match the deployed dashboard image (components/04-odh-dashboard.yaml). `main` drifted;
-          # its npm-workspaces monorepo layout also broke the install below. See #47.
-          ref: v2.37.1-odh
+          # Defaults match the deployed dashboard image (components/04-odh-dashboard.yaml).
+          # `main` drifted; its npm-workspaces monorepo layout also broke the install below (#47).
+          # Override via workflow_dispatch inputs to test against a fork/branch (e.g. a PR still
+          # in review upstream) without editing this file - see #35.
+          repository: ${{ inputs.test_repo || 'opendatahub-io/odh-dashboard' }}
+          ref: ${{ inputs.test_ref || 'v2.37.1-odh' }}
           path: odh-dashboard
           # Full checkout (no sparse-checkout): odh-dashboard is an npm workspaces monorepo, so
           # `npm ci` at the root needs every workspace (backend, packages/*, frontend, ...) plus
