@@ -8,6 +8,8 @@ import sys
 import time
 from typing import TYPE_CHECKING, Generator
 
+import logfire
+
 if TYPE_CHECKING:
     from typing import Any, Callable
 
@@ -18,21 +20,24 @@ def sh(
     **kwargs
 ) -> subprocess.CompletedProcess[str]:
     """Runs a shell command."""
-    env = env or {}
-    print(f"$ {cmd}", file=sys.stdout)
-    sys.stdout.flush()
-    completed_process = subprocess.run(
-        f"set -Eeuxo pipefail; {cmd}",
-        shell=True,
-        executable="/bin/bash",
-        env={**os.environ, **env},
-        input=input,
-        check=True,
-        text=True,
-        **kwargs,
-    )
-    sys.stdout.flush()
-    return completed_process
+    # No-op without a configured provider (logfire.configure() is only called by entrypoint
+    # scripts like deploy.py), so this is safe to leave unconditional here.
+    with logfire.span("sh {cmd}", cmd=cmd[:120]):
+        env = env or {}
+        print(f"$ {cmd}", file=sys.stdout)
+        sys.stdout.flush()
+        completed_process = subprocess.run(
+            f"set -Eeuxo pipefail; {cmd}",
+            shell=True,
+            executable="/bin/bash",
+            env={**os.environ, **env},
+            input=input,
+            check=True,
+            text=True,
+            **kwargs,
+        )
+        sys.stdout.flush()
+        return completed_process
 
 
 def create_resource(resource: str):
@@ -88,13 +93,14 @@ def wait_for_webhook_service_endpoint(namespace: str):
 @contextlib.contextmanager
 def gha_log_group(title: str) -> Generator[None, Any, None]:
     """Prints the starting and ending magic strings for GitHub Actions line group in log."""
-    print(f"::group::{title}", file=sys.stdout)
-    sys.stdout.flush()
-    try:
-        yield
-    finally:
-        print("::endgroup::", file=sys.stdout)
+    with logfire.span(title):
+        print(f"::group::{title}", file=sys.stdout)
         sys.stdout.flush()
+        try:
+            yield
+        finally:
+            print("::endgroup::", file=sys.stdout)
+            sys.stdout.flush()
 
 
 class TestFrame:

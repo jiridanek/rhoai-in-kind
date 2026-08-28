@@ -8,6 +8,9 @@ import pathlib
 import sys
 import textwrap
 
+import logfire
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+
 import certs
 
 # rhoai_in_kind lives in ../src; put it on the path so this script runs under a
@@ -62,6 +65,17 @@ def argocd_sync_cmd(app: str) -> str:
 
 
 def main():
+    # console tree locally for progress visibility; GHA's own ::group:: folding covers that
+    # in CI, so the console tree would just be redundant/noisy there. OTLP export (independent
+    # of both) is handled by the SDK itself via OTEL_EXPORTER_OTLP_ENDPOINT, if set.
+    logfire.configure(
+        service_name="rhoai-deploy-script",
+        send_to_logfire=False,
+        # console expects None (default on) or False - not a plain bool.
+        console=None if "CI" not in os.environ else False,
+    )
+    BotocoreInstrumentor().instrument()
+
     tf = TestFrame()
 
     parser = argparse.ArgumentParser()

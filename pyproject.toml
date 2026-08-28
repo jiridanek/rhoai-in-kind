@@ -5,6 +5,8 @@ description = "Runs OpenShift AI Workbenches in GitHub Actions"
 requires-python = ">=3.13, <3.14"
 dependencies = [
     "boto3",  # used by deploy.py create_buckets() to provision MinIO/S3 buckets
+    "logfire",  # OpenTelemetry tracing for deploy.py's steps/shell commands
+    "opentelemetry-instrumentation-botocore",  # logfire has no built-in boto3/botocore instrumentor
 ]
 
 [tool.ruff]
