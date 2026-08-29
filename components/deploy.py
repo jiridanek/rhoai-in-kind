@@ -96,6 +96,11 @@ def configure_tracing():
             inspect_arguments=True,
             sampling=None,
             send_to_logfire=False,
+            # Global, not just for sh()'s cmd attribute (see its WARNING comment): logfire's
+            # default scrubber would otherwise redact any attribute across every span - not just
+            # cmd - whose value merely looks secret-like (e.g. matches "password", "token").
+            # Accepted for the same reason as that WARNING: disposable local kind-cluster/CI
+            # credentials only, never production secrets.
             scrubbing=False,
             # console expects None (default on) or False - not a plain bool.
             console=None if "CI" not in os.environ else False,

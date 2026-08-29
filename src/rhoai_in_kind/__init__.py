@@ -56,12 +56,17 @@ def code(depth: int) -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def span(
+def _span(
     t: Template,
 ) -> Generator[None, None, None]:
-    """Creates a span.
+    """Creates a span, attributing it to its caller's call site rather than this function's.
+
     _span_name is pre-formatted (not the raw "{cmd}" template) so generic OTel viewers
     (e.g., the Aspire dashboard), which display the literal span name, show the real command.
+
+    Private: code(4) assumes exactly one level of wrapping between the real call site and
+    this generator (contextmanager frame, this frame, the wrapper's `with` line, the wrapper's
+    caller) - true for sh()'s current single call below, but wrong if called any other way.
     """
     _span_name=f(t)
     msg_template, attributes = format_t_string(t)
@@ -81,8 +86,9 @@ def sh(
     # directly in it (not fetched at runtime inside a nested `bash -c`) leaks into the trace
     # backend. This is accepted: this repo only ever handles disposable local
     # kind-cluster/CI credentials, never production secrets.
-    with span(t"sh {cmd}"):
+    with _span(t"sh {cmd}"):
         env = env or {}
+        print(f"$ {cmd}", file=sys.stdout)
         sys.stdout.flush()
         completed_process = subprocess.run(
             f"set -Eeuxo pipefail; {cmd}",
