@@ -46,6 +46,10 @@ jobs:
       # https://github.com/astral-sh/setup-uv
       # Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and caches
       # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step.
+      # python-version sets UV_PYTHON job-wide as a side effect, but every uv run/uv sync step
+      # below sets it explicitly instead (from this step's own output), since this job also runs
+      # opendatahub-tests's own uv project (a different, incompatible Python pin) partway through
+      # - see the second setup-uv step below.
       - name: Install uv (root project deps)
         id: setup-uv-root
         uses: astral-sh/setup-uv@v10.0.1
@@ -56,6 +60,8 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --locked
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
@@ -102,16 +108,19 @@ jobs:
 
       - name: Deploy stuff into Kubernetes
         run: uv run --no-sync components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
       # Separate cache from the root-project one above: `uv run` below (opendatahub-tests's own
       # pyproject.toml/uv.lock) provisions whatever interpreter *that* project's requires-python
-      # needs, independently of the root project's 3.14 pin. Must set python-version explicitly
-      # here too - astral-sh/setup-uv's python-version sets UV_PYTHON for the rest of the job, so
-      # without this the root-project step above would leak its 3.14 pin into `uv run pytest`
-      # below (opendatahub-tests pins ==3.13.* as of the checked-out ref).
+      # needs (==3.13.* as of the checked-out ref), independently of the root project's 3.14 pin.
+      # The "Run workbenches tests" step below reads this step's python-version output
+      # explicitly, rather than relying on the job-wide UV_PYTHON this step's own python-version
+      # also sets as a side effect.
       - name: Install uv (opendatahub-tests deps)
+        id: setup-uv-odh-tests
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -140,6 +149,7 @@ jobs:
         env:
           # https://github.com/jiridanek/rhoai-in-kind/issues/20
           OC_BINARY_PATH: /usr/local/bin/oc
+          UV_PYTHON: "${{ steps.setup-uv-odh-tests.outputs.python-version }}"
 
       - name: Collect logs
         run: uv run --no-sync components/logs.py

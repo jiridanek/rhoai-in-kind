@@ -204,7 +204,11 @@ jobs:
       # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step. Note
       # there's a second, unrelated setup-python further below (3.11, for ods-ci's own Poetry
       # env) - this one only provisions the interpreter deploy.py/logs.py run under.
+      # python-version sets UV_PYTHON job-wide as a side effect, but every uv run step below
+      # sets it explicitly instead (from this step's own output), so each stays correct on its
+      # own regardless of what other steps do to the job-wide env.
       - name: Install uv (root project deps)
+        id: setup-uv-root
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -213,6 +217,8 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --locked
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
       - name: Relocate docker data dir
@@ -329,6 +335,8 @@ jobs:
               },
           }
           subprocess.run(["kubectl", "apply", "-f", "-"], input=json.dumps(manifest), text=True, check=True)
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       - name: Wait for istio image-puller DaemonSet to be ready
         run: kubectl rollout status daemonset/image-puller-istio -n kube-system --timeout=600s
@@ -391,9 +399,12 @@ jobs:
         env:
           PREPULL_IMAGES: ${{ matrix.prepull_images }}
           NOTEBOOK_IMAGE_TAG: ${{ env.NOTEBOOK_IMAGE_TAG }}
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       - name: Deploy stuff into Kubernetes
         run: uv run --no-sync components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       # Phase 2 of the two-phase pre-pull (see phase 1's comment above): one DaemonSet *per*
       # image now, so up to maxParallelImagePulls of them can pull concurrently - safe here
@@ -439,6 +450,7 @@ jobs:
         env:
           PREPULL_IMAGES: ${{ matrix.prepull_images }}
           NOTEBOOK_IMAGE_TAG: ${{ env.NOTEBOOK_IMAGE_TAG }}
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
@@ -551,6 +563,8 @@ jobs:
         run: uv run --no-sync components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
+        env:
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7
