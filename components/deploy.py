@@ -7,21 +7,28 @@ import os
 import pathlib
 import sys
 import textwrap
+from typing import TYPE_CHECKING
 
 import certs
 
 # rhoai_in_kind lives in ../src; put it on the path so this script runs under a
-# plain interpreter (CI: `python components/deploy.py`) as well as under an
-# editable install (local uv venv).
+# plain interpreter (e.g. `python components/deploy.py` for local debugging) as well as under
+# `uv run components/deploy.py` (CI's normal path, which already puts the editable src/ install
+# on sys.path via the venv, but a no-op insert here is harmless either way).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
 from rhoai_in_kind import (
     TestFrame,
     create_resource,
+    get_tracer,
     gha_log_group,
+    set_tracer,
     sh,
     wait_for_webhook_service_endpoint,
 )
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 REDHAT_ODS_APPLICATIONS = "redhat-ods-applications"
 RHODS_NOTEBOOKS = "rhods-notebooks"
@@ -61,8 +68,81 @@ def argocd_sync_cmd(app: str) -> str:
     )
 
 
-def main():
-    tf = TestFrame()
+def _grpc_otlp_span_processor(exporter_cls: type, batch_processor_cls: type) -> BatchSpanProcessor | None:
+    # logfire.configure() auto-adds its own OTLP exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT
+    # is set, but that exporter is hardcoded to HTTP/protobuf - it silently ignores
+    # OTEL_EXPORTER_OTLP_PROTOCOL=grpc (confirmed against logfire._internal.config source).
+    # IntelliJ's bundled OTel collector only speaks gRPC, so build the gRPC exporter ourselves
+    # and register it via additional_span_processors instead of letting logfire's own
+    # env-based detection wire up the (here, incompatible) HTTP one.
+    # OTEL_EXPORTER_OTLP_TRACES_PROTOCOL is the signal-specific override the OTel spec defines
+    # for this exact purpose - check it before the generic OTEL_EXPORTER_OTLP_PROTOCOL.
+    protocol = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL") or os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+    if protocol != "grpc":
+        return None
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return None
+    return batch_processor_cls(exporter_cls(endpoint=endpoint))
+
+
+def configure_tracing() -> None:
+    """Wires up real Logfire-based tracing if the optional `tracing` extra is installed.
+
+    Otherwise a no-op: rhoai_in_kind's Tracer stays the default NullTracer, so sh()/
+    gha_log_group() remain safe to call unconditionally either way.
+
+    All of logfire/opentelemetry-exporter-otlp-proto-grpc/opentelemetry-instrumentation-botocore
+    are installed together via the single `tracing` extra (pyproject.toml), so one
+    try/except ImportError here is enough to guard all three - deliberately not repeated
+    per-import at each individual use site below.
+    """
+    try:
+        import logfire
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcOTLPSpanExporter
+        from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        return
+
+    from rhoai_in_kind import LogfireTracer
+
+    # console tree locally for progress visibility; GHA's own ::group:: folding covers that
+    # in CI, so the console tree would just be redundant/noisy there. OTLP export (independent
+    # of both) is handled by the SDK itself via OTEL_EXPORTER_OTLP_ENDPOINT, if set.
+    grpc_processor = _grpc_otlp_span_processor(GrpcOTLPSpanExporter, BatchSpanProcessor)
+    # Hide the endpoint from logfire's own auto-detection so it doesn't also add its
+    # (incompatible, for grpc) HTTP exporter on top of ours.
+    saved_otlp_endpoint = os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None) if grpc_processor else None
+    saved_otlp_traces_endpoint = os.environ.pop("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", None) if grpc_processor else None
+    try:
+        logfire.configure(
+            service_name="rhoai-deploy-script",
+            inspect_arguments=True,
+            sampling=None,
+            send_to_logfire=False,
+            # Global, not just for sh()'s cmd attribute (see its WARNING comment): logfire's
+            # default scrubber would otherwise redact any attribute across every span - not just
+            # cmd - whose value merely looks secret-like (e.g. matches "password", "token").
+            # Accepted for the same reason as that WARNING: disposable local kind-cluster/CI
+            # credentials only, never production secrets.
+            scrubbing=False,
+            # console expects None (default on) or False - not a plain bool.
+            console=None if "CI" not in os.environ else False,
+            additional_span_processors=[grpc_processor] if grpc_processor else None,
+        )
+    finally:
+        if saved_otlp_endpoint is not None:
+            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = saved_otlp_endpoint
+        if saved_otlp_traces_endpoint is not None:
+            os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = saved_otlp_traces_endpoint
+
+    set_tracer(LogfireTracer(logfire))
+    BotocoreInstrumentor().instrument()
+
+
+def main() -> None:
+    configure_tracing()
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -72,7 +152,20 @@ def main():
         required=not os.environ.get("WORKBENCH_BRANCH"),
     )
     args = parser.parse_args()
-    workbench_branch = args.workbench_branch
+
+    deploy(args.workbench_branch)
+
+
+def deploy(workbench_branch: str) -> None:
+    # One root span for the whole run, so all the gha_log_group/sh spans below nest under a
+    # single trace instead of each step showing up as its own separate top-level trace.
+    # A no-op wrapper when tracing isn't configured (NullTracer).
+    with get_tracer().span("deploy.py run {workbench_branch}", workbench_branch=workbench_branch):
+        _deploy(workbench_branch)
+
+
+def _deploy(workbench_branch: str) -> None:
+    tf = TestFrame()
 
     # slow to deploy so do it first
     with gha_log_group("Install Kyverno"):
@@ -287,13 +380,7 @@ def main():
         # tf.defer(None, lambda _: sh(
         #     "timeout 120s bash -c 'while ! kubectl get --namespace=minio secret/aws-connection-pipeline-artifacts; do sleep 1; done'"))
         def create_buckets(_):
-            try:
-                import boto3
-            except ImportError:
-                python = sys.executable
-                # python = "/opt/homebrew/bin/python3"
-                sh(f"{python} -m pip install boto3")
-                import boto3
+            import boto3
 
             # MINIO_ROOT_USER=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_USER}}'", stdout=subprocess.PIPE).stdout.strip()
             MINIO_ROOT_USER = "AWS_ACCESS_KEY_ID"

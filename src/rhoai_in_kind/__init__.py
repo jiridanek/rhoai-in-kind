@@ -6,33 +6,153 @@ import os
 import subprocess
 import sys
 import time
-from typing import TYPE_CHECKING, Generator
+from string.templatelib import Template, Interpolation, convert
+from typing import TYPE_CHECKING, ContextManager, Generator, Protocol
 
 if TYPE_CHECKING:
+    from types import ModuleType
     from typing import Any, Callable
+
+
+class Tracer(Protocol):
+    """Minimal tracing interface `sh()`/`gha_log_group()` depend on.
+
+    Kept independent of any specific OTel SDK so the `tracing` extra (logfire et al.) can stay
+    an optional dependency - see NullTracer/LogfireTracer below.
+    """
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]: ...
+
+
+class NullTracer:
+    """No-op Tracer, active whenever the `tracing` extra isn't installed/configured."""
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]:
+        return contextlib.nullcontext()
+
+
+class LogfireTracer:
+    """Tracer backed by Pydantic Logfire.
+
+    Takes the already-imported `logfire` module rather than importing it itself, so the whole
+    "is the `tracing` extra installed" check lives in one place (the caller's try/except
+    ImportError) instead of being duplicated here.
+    """
+
+    def __init__(self, logfire_module: ModuleType) -> None:
+        self._logfire = logfire_module
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]:
+        return self._logfire.span(msg_template, **attributes)
+
+
+_tracer: Tracer = NullTracer()
+
+
+def set_tracer(tracer: Tracer) -> None:
+    global _tracer
+    _tracer = tracer
+
+
+def get_tracer() -> Tracer:
+    return _tracer
+
+
+def f(template: Template) -> str:
+    """Renders a t-string exactly like an f-string."""
+    parts = []
+
+    for item in template:
+        match item:
+            case str(text):
+                parts.append(text)
+
+            case Interpolation(value, _, conversion, format_spec):
+                assert conversion in ("r", "s", "a") or conversion is None, f"Unsupported conversion: {conversion}"
+                transformed = convert(value, conversion)
+                formatted = format(transformed, format_spec) if format_spec else str(transformed)
+                parts.append(formatted)
+
+    return "".join(parts)
+
+
+def format_t_string(t: Template) -> tuple[str, dict[str, Any]]:
+    template = []
+    attributes = {}
+    for v in t:
+        match v:
+            case str(text):
+                template.append(text)
+            case Interpolation(value, expression, _, _):
+                template.append(f"{{{expression}}}")
+                attributes[expression] = value
+    return "".join(template), attributes
+
+
+def code(depth: int) -> dict[str, Any]:
+    caller_frame = sys._getframe(depth)
+    return {
+        "code.filepath": caller_frame.f_code.co_filename,
+        "code.lineno": caller_frame.f_lineno,
+        "code.function": caller_frame.f_code.co_name,
+    }
+
+
+@contextlib.contextmanager
+def _span(
+    t: Template,
+) -> Generator[None, None, None]:
+    """Creates a span, attributing it to its caller's call site rather than this function's.
+
+    _span_name is pre-formatted (not the raw "{cmd}" template) so generic OTel viewers
+    (e.g., the Aspire dashboard), which display the literal span name, show the real command.
+
+    Private: code(4) assumes exactly one level of wrapping between the real call site and
+    this generator (contextmanager frame, this frame, the wrapper's `with` line, the wrapper's
+    caller) - true for sh()'s current single call below, but wrong if called any other way.
+    """
+    # sh() calls this on every invocation (often hundreds per deploy run); skip the frame-walk
+    # (code(4)) and template formatting below when there's no real tracer to hand them to.
+    if isinstance(_tracer, NullTracer):
+        yield
+        return
+    _span_name = f(t)
+    msg_template, attributes = format_t_string(t)
+    with _tracer.span(msg_template, _span_name=_span_name, **attributes, **code(4)):
+        yield
 
 
 def sh(
     cmd: str, env: dict[str, str] | None = None,
     input: str | None = None,
-    **kwargs
+    capture_output: bool = False,
+    timeout: float|None = None
 ) -> subprocess.CompletedProcess[str]:
     """Runs a shell command."""
-    env = env or {}
-    print(f"$ {cmd}", file=sys.stdout)
-    sys.stdout.flush()
-    completed_process = subprocess.run(
-        f"set -Eeuxo pipefail; {cmd}",
-        shell=True,
-        executable="/bin/bash",
-        env={**os.environ, **env},
-        input=input,
-        check=True,
-        text=True,
-        **kwargs,
-    )
-    sys.stdout.flush()
-    return completed_process
+    # No-op without a configured provider (logfire.configure() is only called by entrypoint
+    # scripts like deploy.py), so this is safe to leave unconditional here.
+    # WARNING: the full cmd string is recorded as a span attribute, so any secret embedded
+    # directly in it (not fetched at runtime inside a nested `bash -c`) leaks into the trace
+    # backend. This is accepted: this repo only ever handles disposable local
+    # kind-cluster/CI credentials, never production secrets.
+    with _span(t"sh {cmd}"):
+        env = env or {}
+        if capture_output:
+            print(f"$ {cmd}", file=sys.stdout)
+        sys.stdout.flush()
+        completed_process = subprocess.run(
+            f"set -Eeuxo pipefail; {cmd}",
+            shell=True,
+            executable="/bin/bash",
+            env={**os.environ, **env},
+            input=input,
+            check=True,
+            text=True,
+            capture_output=capture_output,
+            timeout=timeout,
+        )
+        sys.stdout.flush()
+        return completed_process
 
 
 def create_resource(resource: str):
@@ -88,13 +208,14 @@ def wait_for_webhook_service_endpoint(namespace: str):
 @contextlib.contextmanager
 def gha_log_group(title: str) -> Generator[None, Any, None]:
     """Prints the starting and ending magic strings for GitHub Actions line group in log."""
-    print(f"::group::{title}", file=sys.stdout)
-    sys.stdout.flush()
-    try:
-        yield
-    finally:
-        print("::endgroup::", file=sys.stdout)
+    with _tracer.span(title):
+        print(f"::group::{title}", file=sys.stdout)
         sys.stdout.flush()
+        try:
+            yield
+        finally:
+            print("::endgroup::", file=sys.stdout)
+            sys.stdout.flush()
 
 
 class TestFrame:
