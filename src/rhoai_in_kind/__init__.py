@@ -77,7 +77,8 @@ def _span(
 def sh(
     cmd: str, env: dict[str, str] | None = None,
     input: str | None = None,
-    **kwargs
+    capture_output: bool = False,
+    timeout: float|None = None
 ) -> subprocess.CompletedProcess[str]:
     """Runs a shell command."""
     # No-op without a configured provider (logfire.configure() is only called by entrypoint
@@ -88,7 +89,8 @@ def sh(
     # kind-cluster/CI credentials, never production secrets.
     with _span(t"sh {cmd}"):
         env = env or {}
-        print(f"$ {cmd}", file=sys.stdout)
+        if capture_output:
+            print(f"$ {cmd}", file=sys.stdout)
         sys.stdout.flush()
         completed_process = subprocess.run(
             f"set -Eeuxo pipefail; {cmd}",
@@ -98,7 +100,8 @@ def sh(
             input=input,
             check=True,
             text=True,
-            **kwargs,
+            capture_output=capture_output,
+            timeout=timeout,
         )
         sys.stdout.flush()
         return completed_process
