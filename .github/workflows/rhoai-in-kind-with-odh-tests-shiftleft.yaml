@@ -51,7 +51,7 @@ jobs:
       # opendatahub-tests's own uv project (a different, incompatible Python pin) partway through
       # - see the second setup-uv step below.
       - name: Install uv (root project deps)
-        id: setup-uv-root
+        id: setup-uv-rhoai-in-kind
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -61,7 +61,7 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked
         env:
-          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
+          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
@@ -109,7 +109,7 @@ jobs:
       - name: Deploy stuff into Kubernetes
         run: uv run --no-sync components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
         env:
-          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
+          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
@@ -158,7 +158,7 @@ jobs:
         env:
           # Restore the root project's interpreter: the opendatahub-tests setup-uv step above
           # left UV_PYTHON pinned to its 3.13, but this `uv run` targets the root project again.
-          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
+          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7
