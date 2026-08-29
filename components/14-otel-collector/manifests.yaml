@@ -11,7 +11,9 @@ metadata:
 ---
 # kubeletstats needs to read each node's own /stats/summary (nodes/stats) via the apiserver's
 # node proxy (nodes/proxy) - both are non-namespaced, hence a ClusterRole/ClusterRoleBinding
-# rather than a namespaced Role.
+# rather than a namespaced Role. pods/namespaces/nodes get/list/watch is for the k8s_attributes
+# processor added below, which correlates file_log's container-log records against live pod
+# metadata (owner refs, labels) rather than just what's parseable from the log file path alone.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -20,6 +22,9 @@ rules:
   - apiGroups: [""]
     resources: ["nodes/stats", "nodes/proxy"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -49,6 +54,23 @@ data:
         endpoint: "https://${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: true
         metric_groups: [node, pod, container]
+      # Container stdout/stderr, read directly off this node's own disk (DaemonSet: one
+      # instance per node, each only ever sees its own node's pods here - no cross-node fan-out).
+      # kind/containerd writes CRI-format logs under this exact path; kubelet's /var/log/containers
+      # symlinks point back into it, so mounting /var/log/pods alone is sufficient.
+      file_log:
+        include: [/var/log/pods/*/*/*.log]
+        exclude: [/var/log/pods/otel-collector_*/*/*.log] # don't ingest this collector's own logs
+        start_at: beginning
+        include_file_path: true
+        include_file_name: false
+        operators:
+          # Parses the standard CRI log line format AND, from the file path itself
+          # (/var/log/pods/<namespace>_<pod>_<uid>/<container>/<n>.log), sets
+          # k8s.namespace.name/k8s.pod.name/k8s.pod.uid/k8s.container.name/k8s.container.restart_count
+          # as resource attributes - k8s_attributes below then correlates on k8s.pod.uid to add
+          # owner/label metadata beyond what the path alone gives us.
+          - type: container
     processors:
       # kubeletstats metrics carry no service.name (they're infra metrics, not app telemetry),
       # so Aspire/other OTel viewers bucket them under the generic "unknown_service" resource.
@@ -57,6 +79,27 @@ data:
         attributes:
           - key: service.name
             value: otel-collector-kubeletstats
+            action: upsert
+      k8s_attributes:
+        auth_type: serviceAccount
+        passthrough: false
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.deployment.name
+      # Group container logs in Aspire/other viewers by their actual container name, not one
+      # shared bucket - k8s.container.name is already set by the container operator above.
+      resource/container_logs_service_name:
+        attributes:
+          - key: service.name
+            from_attribute: k8s.container.name
             action: upsert
     exporters:
       otlp_grpc:
@@ -72,6 +115,10 @@ data:
         metrics:
           receivers: [kubelet_stats]
           processors: [resource]
+          exporters: [otlp_grpc]
+        logs:
+          receivers: [file_log]
+          processors: [k8s_attributes, resource/container_logs_service_name]
           exporters: [otlp_grpc]
 ---
 apiVersion: apps/v1
@@ -107,7 +154,125 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel-collector
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: otel-collector-config
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector-events
+  namespace: otel-collector
+---
+# k8s_events watches the whole cluster's Event stream via the apiserver, not anything node-local
+# - needs its own broader RBAC, separate from the DaemonSet's node-scoped ClusterRole above.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-events
+rules:
+  - apiGroups: [""]
+    resources: ["events", "pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-events
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector-events
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector-events
+    namespace: otel-collector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-events-config
+  namespace: otel-collector
+data:
+  config.yaml: |
+    receivers:
+      k8s_events:
+        auth_type: serviceAccount
+    processors:
+      # Drop Normal-severity events (routine Scheduled/Pulled/Created noise) - keep only Warning
+      # (Evicted, BackOff, OOMKilled, probe failures, ...), which the receiver maps to WARN.
+      filter/warning_events_only:
+        error_mode: ignore
+        log_conditions:
+          - 'log.severity_number < SEVERITY_NUMBER_WARN'
+      resource:
+        attributes:
+          - key: service.name
+            value: k8s-events
+            action: upsert
+    exporters:
+      otlp_grpc:
+        endpoint: "host.docker.internal:18889"
+        tls:
+          insecure: true
+    service:
+      # Both this Deployment and the otel-collector DaemonSet run hostNetwork: true and can land
+      # on the same node - each collector's own self-metrics Prometheus exporter defaults to
+      # localhost:8888, which collides. Give this one a distinct port.
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: localhost
+                    port: 8889
+      pipelines:
+        logs:
+          receivers: [k8s_events]
+          processors: [filter/warning_events_only, resource]
+          exporters: [otlp_grpc]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector-events
+  namespace: otel-collector
+spec:
+  # Single replica, no leader election: k8s_events watches the whole cluster once, not per-node -
+  # running more than one replica (or this inside the DaemonSet) would emit duplicate events.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector-events
+  template:
+    metadata:
+      labels:
+        app: otel-collector-events
+    spec:
+      serviceAccountName: otel-collector-events
+      # Needed to resolve host.docker.internal (only present in a node's own network namespace/
+      # hosts, not the pod network) - same reasoning as the DaemonSet above.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: otel-collector-events
+          image: docker.io/otel/opentelemetry-collector-contrib:0.159.0
+          args: ["--config=/etc/otel-collector/config.yaml"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-events-config
