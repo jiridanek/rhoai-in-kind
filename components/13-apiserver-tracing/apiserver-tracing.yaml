@@ -1,0 +1,17 @@
+# https://kubernetes.io/docs/concepts/cluster-administration/system-traces/
+# Mounted into the control-plane node and referenced by kube-apiserver's --tracing-config-file
+# (see components/00-kind-cluster-tracing.yaml). Not used by the default
+# components/00-kind-cluster.yaml or CI - opt-in for local debugging only, since CI has no OTLP
+# collector listening.
+apiVersion: apiserver.config.k8s.io/v1beta1
+kind: TracingConfiguration
+# host.docker.internal / host.containers.internal both resolve to the same host-gateway IP
+# inside a kind node here (confirmed live: `docker exec kind-control-plane getent hosts
+# host.docker.internal` on Podman/macOS via gvproxy). Podman >=4.7 provides this automatically
+# on both macOS (gvproxy) and native Linux (netavark) without extra --add-host flags; plain
+# Docker on Linux needs `--add-host=host.docker.internal:host-gateway` some other way, which
+# kind itself does not currently set for its node containers.
+endpoint: "host.docker.internal:4317"
+# 100% sampling - fine at this cluster's traffic volume for local/CI debugging, not for a
+# production-scale apiserver.
+samplingRatePerMillion: 1000000
