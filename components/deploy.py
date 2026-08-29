@@ -75,7 +75,10 @@ def _grpc_otlp_span_processor(exporter_cls: type, batch_processor_cls: type) -> 
     # IntelliJ's bundled OTel collector only speaks gRPC, so build the gRPC exporter ourselves
     # and register it via additional_span_processors instead of letting logfire's own
     # env-based detection wire up the (here, incompatible) HTTP one.
-    if os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") != "grpc":
+    # OTEL_EXPORTER_OTLP_TRACES_PROTOCOL is the signal-specific override the OTel spec defines
+    # for this exact purpose - check it before the generic OTEL_EXPORTER_OTLP_PROTOCOL.
+    protocol = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL") or os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+    if protocol != "grpc":
         return None
     endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
