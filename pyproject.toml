@@ -20,6 +20,18 @@ dev = [
     "inline-snapshot"
 ]
 
+[tool.uv]
+# Restrict resolution to the platforms this actually runs on (local dev + GitHub Actions
+# runners), instead of uv's default universal resolution across every OS/arch/libc combo -
+# shrinks uv.lock by dropping wheels for Windows, s390x, ppc64le, armv7l, i686, macOS x86_64,
+# etc. that we never install on. Musllinux wheels remain regardless: PEP 508 has no libc
+# environment marker, so they can't be excluded this way.
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
 [tool.pytest]
 addopts = ["--strict-markers"]
 required_plugins = ["inline-snapshot"]
