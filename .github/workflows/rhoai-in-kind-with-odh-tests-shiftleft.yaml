@@ -47,6 +47,7 @@ jobs:
       # Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and caches
       # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step.
       - name: Install uv (root project deps)
+        id: setup-uv-root
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -147,7 +148,7 @@ jobs:
         env:
           # Restore the root project's interpreter: the opendatahub-tests setup-uv step above
           # left UV_PYTHON pinned to its 3.13, but this `uv run` targets the root project again.
-          UV_PYTHON: '3.14'
+          UV_PYTHON: "${{ steps.setup-uv-root.outputs.python-version }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7
