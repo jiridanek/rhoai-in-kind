@@ -2,13 +2,23 @@
 name = "rhoai-in-kind"
 version = "0.1.0"
 description = "Runs OpenShift AI Workbenches in GitHub Actions"
-requires-python = ">=3.13, <3.14"
+requires-python = ">=3.14, <3.15"
 dependencies = [
     "boto3",  # used by deploy.py create_buckets() to provision MinIO/S3 buckets
     "logfire",  # OpenTelemetry tracing for deploy.py's steps/shell commands
-    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",  # OTEL_EXPORTER_OTLP_PROTOCOL=grpc: logfire's own exporter is HTTP-only
+    "opentelemetry-exporter-otlp-proto-grpc",  # OTEL_EXPORTER_OTLP_PROTOCOL=grpc: logfire's own exporter is HTTP-only
     "opentelemetry-instrumentation-botocore",  # logfire has no built-in boto3/botocore instrumentor
 ]
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "inline-snapshot"
+]
+
+[tool.pytest]
+addopts = ["--strict-markers"]
+required_plugins = ["inline-snapshot"]
+testpaths = ["src"]
 
 [tool.ruff]
 line-length = 120

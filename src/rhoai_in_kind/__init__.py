@@ -6,12 +6,67 @@ import os
 import subprocess
 import sys
 import time
+from string.templatelib import Template, Interpolation, convert
 from typing import TYPE_CHECKING, Generator
 
 import logfire
 
 if TYPE_CHECKING:
     from typing import Any, Callable
+
+
+def f(template: Template) -> str:
+    """Renders a t-string exactly like an f-string."""
+    parts = []
+
+    for item in template:
+        match item:
+            case str(text):
+                parts.append(text)
+
+            case Interpolation(value, _, conversion, format_spec):
+                assert conversion in ("r", "s", "a") or conversion is None, f"Unsupported conversion: {conversion}"
+                transformed = convert(value, conversion)
+                formatted = format(transformed, format_spec) if format_spec else str(transformed)
+                parts.append(formatted)
+
+    return "".join(parts)
+
+
+def format_t_string(t: Template) -> tuple[str, dict[str, Any]]:
+    template = []
+    attributes = {}
+    for v in t:
+        match v:
+            case str(text):
+                template.append(text)
+            case Interpolation(value, expression, _, _):
+                template.append(f"{{{expression}}}")
+                attributes[expression] = value
+    return "".join(template), attributes
+
+
+def code(depth: int) -> dict[str, Any]:
+    caller_frame = sys._getframe(depth)
+    return {
+        "code.filepath": caller_frame.f_code.co_filename,
+        "code.lineno": caller_frame.f_lineno,
+        "code.function": caller_frame.f_code.co_name,
+    }
+
+
+@contextlib.contextmanager
+def span(
+    t: Template,
+) -> Generator[None, None, None]:
+    """Creates a span.
+    _span_name is pre-formatted (not the raw "{cmd}" template) so generic OTel viewers
+    (e.g., the Aspire dashboard), which display the literal span name, show the real command.
+    """
+    _span_name=f(t)
+    msg_template, attributes = format_t_string(t)
+    with logfire.span(msg_template, _span_name=_span_name, **attributes, **code(4)):
+        yield
 
 
 def sh(
@@ -26,11 +81,8 @@ def sh(
     # directly in it (not fetched at runtime inside a nested `bash -c`) leaks into the trace
     # backend. This is accepted: this repo only ever handles disposable local
     # kind-cluster/CI credentials, never production secrets.
-    # _span_name is pre-formatted (not the raw "{cmd}" template) so generic OTel viewers
-    # (e.g. the Aspire dashboard), which display the literal span name, show the real command.
-    with logfire.span("sh {cmd}", _span_name=f"sh {cmd}", cmd=cmd):
+    with span(t"sh {cmd}"):
         env = env or {}
-        print(f"$ {cmd}", file=sys.stdout)
         sys.stdout.flush()
         completed_process = subprocess.run(
             f"set -Eeuxo pipefail; {cmd}",

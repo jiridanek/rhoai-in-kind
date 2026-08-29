@@ -93,7 +93,10 @@ def configure_tracing():
     try:
         logfire.configure(
             service_name="rhoai-deploy-script",
+            inspect_arguments=True,
+            sampling=None,
             send_to_logfire=False,
+            scrubbing=False,
             # console expects None (default on) or False - not a plain bool.
             console=None if "CI" not in os.environ else False,
             additional_span_processors=[grpc_processor] if grpc_processor else None,
@@ -124,10 +127,8 @@ def main():
 
 # One root span for the whole run, so all the gha_log_group/sh spans below nest under a
 # single trace instead of each step showing up as its own separate top-level trace.
-# extract_args=True (the default) already records workbench_branch as a span attribute -
-# the span name itself can't be made dynamic this way (it's fixed once at decoration time),
-# but the argument is visible in the span's attributes either way.
-@logfire.instrument("deploy.py run")
+# {workbench_branch=} in the span name records the argument as a span attribute too.
+@logfire.instrument("deploy.py run {workbench_branch}")
 def deploy(workbench_branch: str):
     tf = TestFrame()
 
