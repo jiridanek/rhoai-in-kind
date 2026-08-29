@@ -11,7 +11,14 @@ kind: TracingConfiguration
 # on both macOS (gvproxy) and native Linux (netavark) without extra --add-host flags; plain
 # Docker on Linux needs `--add-host=host.docker.internal:host-gateway` some other way, which
 # kind itself does not currently set for its node containers.
-endpoint: "host.docker.internal:4317"
+#
+# Port 18889 matches the .NET Aspire dashboard's default OTLP gRPC port (not the generic
+# OTel collector's 4317) - see
+#   docker run --rm -d -p 18888:18888 -p 18889:18889 \
+#     -e DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true --name aspire-dashboard \
+#     mcr.microsoft.com/dotnet/aspire-dashboard:latest
+# Adjust if pointing at a different local collector.
+endpoint: "host.docker.internal:18889"
 # 100% sampling - fine at this cluster's traffic volume for local/CI debugging, not for a
 # production-scale apiserver.
 samplingRatePerMillion: 1000000
