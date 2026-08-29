@@ -129,6 +129,81 @@ someone would reach for to debug a real slow-deploy incident today. Tightening s
 adding log-payload parsing/correlation are the concrete next steps if this is to be relied on,
 not merely demoed.
 
+## Update (2026-08-30): gateway added, one hypothesis corrected, one new problem found
+
+Implemented the tail-sampling gateway proposed below, plus structured-log parsing for the two
+kubeflow/odh notebook controllers. Two corrections to the record above, both found by verifying
+live rather than trusting a plausible-sounding first read:
+
+- **The "ArgoCD/Kyverno can't reach `host.docker.internal`" hypothesis was wrong.** A live test
+  (`kubectl run --rm -i --image=busybox nslookup host.docker.internal`) showed regular,
+  non-hostNetwork pods resolve it fine via CoreDNS forwarding. Kyverno's tracing was already
+  working before this change - confirmed via a real distributed trace with both a
+  `kyverno-admission-controller: POST` root span and an `apiserver: PUT .../leases/{:name}`
+  child span from one lease-renewal call. The gateway was still worth adding, for a different
+  reason: `tail_sampling` makes one keep/drop decision per trace ID, so every participant of a
+  shared trace like that one needs to flow through the *same* collector instance, or the two
+  ends' decisions could disagree and orphan half the trace.
+- **ArgoCD's own tracing is confirmed broken, root cause still unknown.** `ARGOCD_SERVER_OTLP_ADDRESS`
+  is correctly set in `argocd-server`'s environment (checked via `kubectl exec ... env`), and it
+  was rolled out fresh after the ConfigMap change, but it emits zero traces - Aspire's
+  `argocd-server` resource shows "No traces found" even under live, unpaused, freshly-reloaded
+  data - and its logs never mention otlp/otel/tracing at all, unlike Kyverno's explicit
+  `traces export: ...` failure logging when something is actually wrong. Not investigated
+  further this pass.
+
+**Gateway build note**: kube-apiserver's static pod runs in the node's own network namespace
+with the node's own `/etc/resolv.conf`, not CoreDNS (confirmed live:
+`podman exec kind-control-plane getent hosts kubernetes.default.svc.cluster.local` fails) - a
+`*.svc.cluster.local` name doesn't resolve there even though the ClusterIP itself does (kube-proxy's
+iptables NAT is node-wide). Pinned the gateway Service to a fixed ClusterIP
+(`10.96.200.200`) instead of relying on DNS for the one caller that needs it.
+
+**Verified working, with hard numbers** (`otelcol_receiver_accepted_spans`/`_log_records` and
+`_exporter_sent_*` counters scraped directly off the gateway/DaemonSet's own Prometheus
+endpoints, not just eyeballing the UI): the gateway received 199,923 spans and successfully
+forwarded 177,453 of them; `tail_sampling` evaluated 45,307 traces and kept 24,050 (~53%),
+dropping the rest as single-span noise - a real, working flood fix, not just a config that
+parses. The DaemonSet's log pipeline received and forwarded 72,323/72,323 log records with zero
+drops after adding the new parsing operators.
+
+**Structured-log parsing for kubeflow's `notebook-controller` and `odh-notebook-controller-manager`**
+(the two controllers the user specifically asked to add): inspected their actual log output
+live rather than guessing.
+- `odh-notebook-controller-manager` emits one JSON object per line (zap JSON encoder) -
+  straightforward `json_parser`.
+- kubeflow's `notebook-controller-deployment` emits zap's **console** encoder instead:
+  tab-separated `<ts>\t<LEVEL>\t<logger-or-message>[\t<message>][\t{json fields}]`, with an
+  inconsistent field count (a logger-name column appears only for named sub-loggers, with no
+  marker distinguishing its presence) - handled with a `regex_parser` that extracts
+  timestamp/severity and, if present, a trailing JSON fields blob, deliberately leaving the
+  human-readable message text unsplit rather than guessing wrong.
+- A `router` operator dispatches on the first character of the line (`^\{` vs a tab-separated
+  header) rather than hardcoding container/pod names, so this also covers any other component
+  using either format.
+- Found and fixed two real bugs while verifying end-to-end rather than trusting the config once
+  it stopped erroring: (1) the JSON path had no `severity` mapping and used the default
+  `parse_to: body` (which just re-serializes the parsed map back to JSON-looking text - Aspire
+  showed no visible difference from unparsed output even though parsing technically "succeeded"),
+  fixed by adding `parse_to: attributes` and mapping `level`; (2) both controllers name their
+  single container `manager` (confirmed via `kubectl get deploy ... -o jsonpath=
+  '{.spec.template.spec.containers[*].name}'` on both), so the existing
+  `service.name = k8s.container.name` logic collapsed them into one indistinguishable Aspire
+  resource - fixed by adding a second `resource` processor step that upserts `service.name` from
+  `k8s.deployment.name` when present (a no-op for anything not Deployment-owned).
+
+**New limitation found, distinct from the ones above**: even with parsing fixed and confirmed
+correct at the collector level (72,323/72,323 received/sent, verified via the DaemonSet's own
+Prometheus metrics), the two controllers' actual log *entries* were never observed in Aspire's UI
+- not because the pipeline dropped them, but because Aspire's structured-logs view appears to
+share one fixed-size global ring buffer across every source in the cluster (repeatedly observed
+capped at exactly 220 rows, on both the traces and structured-logs pages independently). In a
+cluster where a handful of chatty components (kube-apiserver, Kyverno, CoreDNS) emit far more
+volume than a mostly-idle controller, the idle one's few log lines get evicted from that shared
+buffer almost immediately - filtering to its resource afterward can't recover data that's already
+gone. This is an Aspire configuration/scale limitation (there may be an env var to raise the
+cap), not a bug in the collector pipeline itself, and wasn't fixed in this pass.
+
 ## Consequences
 
 - Nobody pays for this who doesn't opt in: no new hard dependencies, no CI behavior change, no

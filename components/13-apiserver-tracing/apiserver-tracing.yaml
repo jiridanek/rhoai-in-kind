@@ -5,20 +5,20 @@
 # collector listening.
 apiVersion: apiserver.config.k8s.io/v1beta1
 kind: TracingConfiguration
-# host.docker.internal / host.containers.internal both resolve to the same host-gateway IP
-# inside a kind node here (confirmed live: `docker exec kind-control-plane getent hosts
-# host.docker.internal` on Podman/macOS via gvproxy). Podman >=4.7 provides this automatically
-# on both macOS (gvproxy) and native Linux (netavark) without extra --add-host flags; plain
-# Docker on Linux needs `--add-host=host.docker.internal:host-gateway` some other way, which
-# kind itself does not currently set for its node containers.
-#
-# Port 18889 matches the .NET Aspire dashboard's default OTLP gRPC port (not the generic
-# OTel collector's 4317) - see
-#   docker run --rm -d -p 18888:18888 -p 18889:18889 \
-#     -e DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true --name aspire-dashboard \
-#     mcr.microsoft.com/dotnet/aspire-dashboard:latest
-# Adjust if pointing at a different local collector.
-endpoint: "host.docker.internal:18889"
-# 100% sampling - fine at this cluster's traffic volume for local/CI debugging, not for a
-# production-scale apiserver.
+# Points at components/14-otel-collector/manifests.yaml's otel-collector-gateway Service by its
+# pinned ClusterIP (10.96.200.200), not a DNS name: kube-apiserver's static pod runs in the
+# node's own network namespace with the node's own /etc/resolv.conf, not CoreDNS (confirmed
+# live: `podman exec kind-control-plane getent hosts kubernetes.default.svc.cluster.local`
+# fails), so a *.svc.cluster.local name wouldn't resolve here even though the ClusterIP itself
+# is reachable (kube-proxy's iptables NAT applies node-wide). The gateway applies a
+# tail_sampling processor before forwarding to Aspire - kube-apiserver at 100% sampling with no
+# per-path filtering of its own floods the viewer with routine control-loop noise (confirmed
+# live: Kyverno's controllers alone generate a constant stream of single-span
+# authentication/lease-renewal/subjectaccessreviews traces). Routing through the same gateway
+# instance that Kyverno's own tracing also uses matters because the two already share real
+# distributed traces (e.g. a lease-renewal call: "kyverno-admission-controller: POST" root span
+# with an "apiserver: PUT .../leases/{:name}" child) - tail_sampling's per-trace-ID decision
+# needs to see every participant's spans to stay consistent, not just apiserver's.
+endpoint: "10.96.200.200:4317"
+# 100% sampling here is fine now that the gateway does the actual filtering - see above.
 samplingRatePerMillion: 1000000

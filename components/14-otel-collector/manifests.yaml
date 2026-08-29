@@ -71,6 +71,64 @@ data:
           # as resource attributes - k8s_attributes below then correlates on k8s.pod.uid to add
           # owner/label metadata beyond what the path alone gives us.
           - type: container
+          # Best-effort structured parsing of the actual app log line (now in `body`, CRI framing
+          # already stripped by the container operator above). Two real formats confirmed live
+          # in this cluster's own pods: odh-notebook-controller/ArgoCD emit one JSON object per
+          # line (zap/logrus JSON encoder); kubeflow's notebook-controller emits zap's *console*
+          # encoder instead - tab-separated `<ts>\t<LEVEL>\t<logger-or-message>[\t<message>]
+          # [\t{json fields}]` with an inconsistent field count (the logger-name column only
+          # appears for named sub-loggers, e.g. "setup"/"controller-runtime.metrics" - there's no
+          # marker distinguishing "logger present" from "not present" other than reading the
+          # column's content, which a fixed regex can't do reliably). Route on the first
+          # non-whitespace character instead of the container name, so this also covers any other
+          # component using either format without hardcoding names here.
+          - type: router
+            id: route_by_log_format
+            routes:
+              - output: parse_json_line
+                expr: 'body matches "^\\{"'
+              - output: parse_zap_console_line
+                expr: 'body matches "^\\S+\\t[A-Z]+\\t"'
+            default: noop_passthrough
+          - type: json_parser
+            id: parse_json_line
+            parse_from: body
+            # Default parse_to is `body` (replacing the raw string with a parsed map, which
+            # Aspire just re-renders as the same-looking JSON text) - `attributes` is what
+            # actually makes the fields show up as separate, filterable structured data.
+            parse_to: attributes
+            on_error: send_quiet
+            # Both JSON loggers seen live use "level" (odh-notebook-controller and ArgoCD's zap/
+            # logrus JSON encoders); their timestamp key differs ("ts" vs "time" respectively) so
+            # is deliberately left unmapped here rather than guessing one - the container
+            # operator's own CRI-parsed timestamp (already accurate to when the line was written)
+            # is used instead.
+            severity:
+              parse_from: attributes.level
+            # Without this, stanza's default chaining would fall through into the zap-console
+            # regex_parser next (harmless - it wouldn't match a JSON line and on_error is quiet -
+            # but wasted work on every single line, and fragile if that ever changed).
+            output: noop_passthrough
+          # Only pulls out timestamp/severity and, if present, a trailing JSON fields blob -
+          # deliberately does NOT try to split the remaining column(s) into logger vs. message
+          # (see comment above on why that split isn't reliably regex-able); the human-readable
+          # text stays intact in `rest` rather than being mangled by a wrong guess.
+          - type: regex_parser
+            id: parse_zap_console_line
+            parse_from: body
+            regex: '^(?P<ts>\S+)\t(?P<sev>[A-Z]+)\t(?P<rest>.*?)(?:\t(?P<fields_json>\{.*\}))?$'
+            on_error: send_quiet
+            timestamp:
+              parse_from: attributes.ts
+              layout: "%Y-%m-%dT%H:%M:%SZ"
+            severity:
+              parse_from: attributes.sev
+          - type: json_parser
+            parse_from: attributes.fields_json
+            if: 'attributes.fields_json != nil'
+            on_error: send_quiet
+          - type: noop
+            id: noop_passthrough
     processors:
       # kubeletstats metrics carry no service.name (they're infra metrics, not app telemetry),
       # so Aspire/other OTel viewers bucket them under the generic "unknown_service" resource.
@@ -101,6 +159,18 @@ data:
           - key: service.name
             from_attribute: k8s.container.name
             action: upsert
+      # Container name alone isn't unique enough: kubeflow's notebook-controller AND
+      # odh-notebook-controller-manager both name their single container "manager" (confirmed
+      # live via `kubectl get deploy ... -o jsonpath='{.spec.template.spec.containers[*].name}'`
+      # on both), so without this they'd collide into one indistinguishable "manager" resource.
+      # Runs after the processor above and only overrides when k8s.deployment.name exists (a
+      # no-op upsert for anything not owned by a Deployment, e.g. static pods/DaemonSets) - the
+      # controller pair above are exactly the case this disambiguates.
+      resource/service_name_from_deployment:
+        attributes:
+          - key: service.name
+            from_attribute: k8s.deployment.name
+            action: upsert
     exporters:
       otlp_grpc:
         # host.docker.internal only resolves inside the node's own network namespace (its
@@ -118,7 +188,7 @@ data:
           exporters: [otlp_grpc]
         logs:
           receivers: [file_log]
-          processors: [k8s_attributes, resource/container_logs_service_name]
+          processors: [k8s_attributes, resource/container_logs_service_name, resource/service_name_from_deployment]
           exporters: [otlp_grpc]
 ---
 apiVersion: apps/v1
@@ -276,3 +346,137 @@ spec:
         - name: config
           configMap:
             name: otel-collector-events-config
+---
+# Single in-cluster OTLP ingress point for kube-apiserver, ArgoCD, and Kyverno - NOT because any
+# of them fail to reach host.docker.internal directly (confirmed live they all can: regular,
+# non-hostNetwork pods resolve it fine too, via CoreDNS forwarding - `kubectl run --rm -i
+# --image=busybox nslookup host.docker.internal` succeeds), but because kube-apiserver and
+# Kyverno already produce genuinely correlated *distributed* traces (confirmed live: a single
+# trace with both a "kyverno-admission-controller: POST" root span and an
+# "apiserver: PUT .../leases/{:name}" child span, from Kyverno's lease-renewal call). The
+# tail_sampling processor below makes one keep/drop decision per trace ID, buffered over
+# `decision_wait` - if apiserver's spans went through this gateway while Kyverno's went straight
+# to Aspire (or vice versa), the two could disagree and orphan half of a shared trace. Routing
+# every participant through the same collector instance is what makes a consistent decision
+# possible at all.
+#
+# Separately, ArgoCD's own tracing was checked live and found to emit *nothing* -
+# `ARGOCD_SERVER_OTLP_ADDRESS=host.docker.internal:18889` is correctly set in argocd-server's
+# environment (confirmed via `kubectl exec ... env`), but no trace ever appeared for the
+# `argocd-server` resource in Aspire, and its logs contain zero mentions of otlp/otel/tracing
+# either way (unlike Kyverno's own explicit "traces export: ..." failure logging). Root cause
+# not yet determined - moving its export target here doesn't fix that on its own, but keeps it
+# consistent with the other two once/if it does start emitting spans.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-gateway-config
+  namespace: otel-collector
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+    processors:
+      # kube-apiserver at 100% sampling floods the viewer with routine control-loop noise
+      # (Kyverno's controllers alone constantly renew leases, check subjectaccessreviews, and
+      # poll policies - confirmed live: single-span "authentication"/lease/SAR traces dominated
+      # the trace list). TracingConfiguration itself has no per-path sampling/exclusion, so filter
+      # after the fact instead: keep anything with multiple spans, anything slow, or any error -
+      # drop the rest. This is an OR across top-level policies (any match keeps the trace).
+      tail_sampling:
+        decision_wait: 5s
+        policies:
+          - name: multi-span
+            type: span_count
+            span_count:
+              min_spans: 3
+          - name: slow
+            type: latency
+            latency:
+              threshold_ms: 20
+          - name: errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+    exporters:
+      otlp_grpc:
+        endpoint: "host.docker.internal:18889"
+        tls:
+          insecure: true
+    service:
+      # Distinct self-metrics port: this Deployment isn't hostNetwork so it wouldn't normally
+      # collide with the other two collectors' localhost:8888, but keep the same explicit pattern
+      # used by otel-collector-events for consistency and to make room if that ever changes.
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: localhost
+                    port: 8890
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [tail_sampling]
+          exporters: [otlp_grpc]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector-gateway
+  namespace: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector-gateway
+  template:
+    metadata:
+      labels:
+        app: otel-collector-gateway
+    spec:
+      # Regular pod network: reached via the Service's in-cluster DNS name by ArgoCD/Kyverno/
+      # apiserver, and its own outbound export to Aspire works fine from here too -
+      # host.docker.internal resolves from any pod via CoreDNS forwarding, confirmed live
+      # (see the ConfigMap comment above) - no hostNetwork needed for either direction.
+      containers:
+        - name: otel-collector-gateway
+          image: docker.io/otel/opentelemetry-collector-contrib:0.159.0
+          args: ["--config=/etc/otel-collector/config.yaml"]
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-gateway-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-gateway
+  namespace: otel-collector
+spec:
+  # Pinned rather than auto-assigned: kube-apiserver's TracingConfiguration.endpoint needs to
+  # reach this Service, but its static pod runs in the node's own network namespace with the
+  # node's own /etc/resolv.conf (confirmed live: `podman exec kind-control-plane getent hosts
+  # kubernetes.default.svc.cluster.local` fails) - no CoreDNS, so a *.svc.cluster.local DNS name
+  # won't resolve there. A ClusterIP is still reachable from a hostNetwork process (kube-proxy's
+  # iptables NAT rules apply node-wide, not just inside the pod network namespace) - just not by
+  # name. Pinning it means apiserver's config doesn't need to look up the IP after every
+  # recreate. Chosen from the default service-cluster-ip-range (10.96.0.0/16) via
+  # `kubectl get svc -A` finding no existing user of it.
+  clusterIP: 10.96.200.200
+  selector:
+    app: otel-collector-gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317

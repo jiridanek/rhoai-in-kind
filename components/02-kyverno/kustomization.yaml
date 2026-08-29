@@ -80,18 +80,27 @@ patches:
   # cmd/internal/{flag,tracing}.go - all 4 controllers wire this up via internal.WithTracing()/
   # internal.SetupTracing()). tracingAddress+tracingPort are joined as host:port (net.JoinHostPort)
   # with no scheme prefix; empty tracingCreds means an insecure connection, matching the
-  # plaintext-OTLP collector these point at. Same endpoint as
-  # components/13-apiserver-tracing/apiserver-tracing.yaml and components/14-otel-collector.
+  # plaintext-OTLP collector these point at.
+  #
+  # Points at components/14-otel-collector's otel-collector-gateway Service (in-cluster DNS -
+  # Kyverno pods are on the regular pod network with working CoreDNS, confirmed live, so no
+  # pinned-IP workaround is needed here unlike kube-apiserver's hostNetwork static pod - see
+  # components/13-apiserver-tracing/apiserver-tracing.yaml). This already works today - confirmed
+  # live (2026-08-30): a real, correlated distributed trace with both a
+  # "kyverno-admission-controller: POST" root span and an "apiserver: PUT .../leases/{:name}"
+  # child span showed up in Aspire from a lease-renewal call. Routed through the gateway (rather
+  # than straight to Aspire) so its tail_sampling processor sees every participant of traces like
+  # that one and can make one consistent keep/drop decision instead of the two ends disagreeing.
   - patch: |-
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --enableTracing=true
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingAddress=host.docker.internal
+        value: --tracingAddress=otel-collector-gateway.otel-collector.svc.cluster.local
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingPort=18889
+        value: --tracingPort=4317
     target:
       group: apps
       version: v1
@@ -103,10 +112,10 @@ patches:
         value: --enableTracing=true
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingAddress=host.docker.internal
+        value: --tracingAddress=otel-collector-gateway.otel-collector.svc.cluster.local
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingPort=18889
+        value: --tracingPort=4317
     target:
       group: apps
       version: v1
@@ -118,10 +127,10 @@ patches:
         value: --enableTracing=true
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingAddress=host.docker.internal
+        value: --tracingAddress=otel-collector-gateway.otel-collector.svc.cluster.local
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingPort=18889
+        value: --tracingPort=4317
     target:
       group: apps
       version: v1
@@ -133,10 +142,10 @@ patches:
         value: --enableTracing=true
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingAddress=host.docker.internal
+        value: --tracingAddress=otel-collector-gateway.otel-collector.svc.cluster.local
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --tracingPort=18889
+        value: --tracingPort=4317
     target:
       group: apps
       version: v1
