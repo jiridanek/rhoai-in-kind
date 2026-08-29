@@ -42,15 +42,24 @@ metadata:
 data:
   config.yaml: |
     receivers:
-      kubeletstats:
+      kubelet_stats:
         collection_interval: 15s
         auth_type: serviceAccount
         # DaemonSet + hostNetwork: each pod talks to its own node's kubelet, not the apiserver.
         endpoint: "https://${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: true
         metric_groups: [node, pod, container]
+    processors:
+      # kubeletstats metrics carry no service.name (they're infra metrics, not app telemetry),
+      # so Aspire/other OTel viewers bucket them under the generic "unknown_service" resource.
+      # Set one explicitly so they show up as their own named resource instead.
+      resource:
+        attributes:
+          - key: service.name
+            value: otel-collector-kubeletstats
+            action: upsert
     exporters:
-      otlp:
+      otlp_grpc:
         # host.docker.internal only resolves inside the node's own network namespace (its
         # per-container /etc/hosts, injected by Podman/gvproxy - not real DNS), hence
         # hostNetwork: true on the DaemonSet pod below rather than the default pod network.
@@ -61,8 +70,9 @@ data:
     service:
       pipelines:
         metrics:
-          receivers: [kubeletstats]
-          exporters: [otlp]
+          receivers: [kubelet_stats]
+          processors: [resource]
+          exporters: [otlp_grpc]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -87,7 +97,7 @@ spec:
         - name: otel-collector
           # https://github.com/open-telemetry/opentelemetry-collector-releases/releases
           # kubeletstats lives in -contrib, not the core otel/opentelemetry-collector image.
-          image: docker.io/otel/opentelemetry-collector-contrib:0.137.0
+          image: docker.io/otel/opentelemetry-collector-contrib:0.159.0
           args: ["--config=/etc/otel-collector/config.yaml"]
           env:
             - name: K8S_NODE_NAME
