@@ -21,3 +21,20 @@ patches:
       version: v1
       kind: Deployment
       name: argocd-server
+  # Native OTLP tracing: server/repo-server/application-controller each call traceutil.InitTracer
+  # when their own *_OTLP_ADDRESS env var is non-empty (confirmed in argo-cd v3.5.1 source,
+  # cmd/argocd-{server,repo-server,application-controller}/commands). All three of those env vars
+  # already read the SAME argocd-cmd-params-cm key (otlp.address) in install.yaml - confirmed by
+  # inspecting the built manifest - so one ConfigMap key covers all three, no per-Deployment env
+  # patch needed. *_OTLP_INSECURE already defaults to true, matching the plaintext-OTLP collector
+  # this points at. Same endpoint as components/13-apiserver-tracing/apiserver-tracing.yaml and
+  # components/14-otel-collector.
+  - patch: |-
+      - op: add
+        path: /data
+        value:
+          otlp.address: host.docker.internal:18889
+    target:
+      version: v1
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
