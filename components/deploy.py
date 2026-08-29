@@ -7,11 +7,7 @@ import os
 import pathlib
 import sys
 import textwrap
-
-import logfire
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcOTLPSpanExporter
-from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from typing import TYPE_CHECKING
 
 import certs
 
@@ -23,10 +19,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 from rhoai_in_kind import (
     TestFrame,
     create_resource,
+    get_tracer,
     gha_log_group,
+    set_tracer,
     sh,
     wait_for_webhook_service_endpoint,
 )
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 REDHAT_ODS_APPLICATIONS = "redhat-ods-applications"
 RHODS_NOTEBOOKS = "rhods-notebooks"
@@ -66,7 +67,7 @@ def argocd_sync_cmd(app: str) -> str:
     )
 
 
-def _grpc_otlp_span_processor() -> BatchSpanProcessor | None:
+def _grpc_otlp_span_processor(exporter_cls: type, batch_processor_cls: type) -> BatchSpanProcessor | None:
     # logfire.configure() auto-adds its own OTLP exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT
     # is set, but that exporter is hardcoded to HTTP/protobuf - it silently ignores
     # OTEL_EXPORTER_OTLP_PROTOCOL=grpc (confirmed against logfire._internal.config source).
@@ -78,14 +79,34 @@ def _grpc_otlp_span_processor() -> BatchSpanProcessor | None:
     endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
         return None
-    return BatchSpanProcessor(GrpcOTLPSpanExporter(endpoint=endpoint))
+    return batch_processor_cls(exporter_cls(endpoint=endpoint))
 
 
-def configure_tracing():
+def configure_tracing() -> None:
+    """Wires up real Logfire-based tracing if the optional `tracing` extra is installed.
+
+    Otherwise a no-op: rhoai_in_kind's Tracer stays the default NullTracer, so sh()/
+    gha_log_group() remain safe to call unconditionally either way.
+
+    All of logfire/opentelemetry-exporter-otlp-proto-grpc/opentelemetry-instrumentation-botocore
+    are installed together via the single `tracing` extra (pyproject.toml), so one
+    try/except ImportError here is enough to guard all three - deliberately not repeated
+    per-import at each individual use site below.
+    """
+    try:
+        import logfire
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GrpcOTLPSpanExporter
+        from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        return
+
+    from rhoai_in_kind import LogfireTracer
+
     # console tree locally for progress visibility; GHA's own ::group:: folding covers that
     # in CI, so the console tree would just be redundant/noisy there. OTLP export (independent
     # of both) is handled by the SDK itself via OTEL_EXPORTER_OTLP_ENDPOINT, if set.
-    grpc_processor = _grpc_otlp_span_processor()
+    grpc_processor = _grpc_otlp_span_processor(GrpcOTLPSpanExporter, BatchSpanProcessor)
     # Hide the endpoint from logfire's own auto-detection so it doesn't also add its
     # (incompatible, for grpc) HTTP exporter on top of ours.
     saved_otlp_endpoint = os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None) if grpc_processor else None
@@ -112,10 +133,11 @@ def configure_tracing():
         if saved_otlp_traces_endpoint is not None:
             os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = saved_otlp_traces_endpoint
 
+    set_tracer(LogfireTracer(logfire))
     BotocoreInstrumentor().instrument()
 
 
-def main():
+def main() -> None:
     configure_tracing()
 
     parser = argparse.ArgumentParser()
@@ -130,11 +152,15 @@ def main():
     deploy(args.workbench_branch)
 
 
-# One root span for the whole run, so all the gha_log_group/sh spans below nest under a
-# single trace instead of each step showing up as its own separate top-level trace.
-# {workbench_branch=} in the span name records the argument as a span attribute too.
-@logfire.instrument("deploy.py run {workbench_branch}")
-def deploy(workbench_branch: str):
+def deploy(workbench_branch: str) -> None:
+    # One root span for the whole run, so all the gha_log_group/sh spans below nest under a
+    # single trace instead of each step showing up as its own separate top-level trace.
+    # A no-op wrapper when tracing isn't configured (NullTracer).
+    with get_tracer().span("deploy.py run {workbench_branch}", workbench_branch=workbench_branch):
+        _deploy(workbench_branch)
+
+
+def _deploy(workbench_branch: str) -> None:
     tf = TestFrame()
 
     # slow to deploy so do it first

@@ -7,12 +7,55 @@ import subprocess
 import sys
 import time
 from string.templatelib import Template, Interpolation, convert
-from typing import TYPE_CHECKING, Generator
-
-import logfire
+from typing import TYPE_CHECKING, ContextManager, Generator, Protocol
 
 if TYPE_CHECKING:
+    from types import ModuleType
     from typing import Any, Callable
+
+
+class Tracer(Protocol):
+    """Minimal tracing interface `sh()`/`gha_log_group()` depend on.
+
+    Kept independent of any specific OTel SDK so the `tracing` extra (logfire et al.) can stay
+    an optional dependency - see NullTracer/LogfireTracer below.
+    """
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]: ...
+
+
+class NullTracer:
+    """No-op Tracer, active whenever the `tracing` extra isn't installed/configured."""
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]:
+        return contextlib.nullcontext()
+
+
+class LogfireTracer:
+    """Tracer backed by Pydantic Logfire.
+
+    Takes the already-imported `logfire` module rather than importing it itself, so the whole
+    "is the `tracing` extra installed" check lives in one place (the caller's try/except
+    ImportError) instead of being duplicated here.
+    """
+
+    def __init__(self, logfire_module: ModuleType) -> None:
+        self._logfire = logfire_module
+
+    def span(self, msg_template: str, /, **attributes: Any) -> ContextManager[None]:
+        return self._logfire.span(msg_template, **attributes)
+
+
+_tracer: Tracer = NullTracer()
+
+
+def set_tracer(tracer: Tracer) -> None:
+    global _tracer
+    _tracer = tracer
+
+
+def get_tracer() -> Tracer:
+    return _tracer
 
 
 def f(template: Template) -> str:
@@ -68,9 +111,14 @@ def _span(
     this generator (contextmanager frame, this frame, the wrapper's `with` line, the wrapper's
     caller) - true for sh()'s current single call below, but wrong if called any other way.
     """
-    _span_name=f(t)
+    # sh() calls this on every invocation (often hundreds per deploy run); skip the frame-walk
+    # (code(4)) and template formatting below when there's no real tracer to hand them to.
+    if isinstance(_tracer, NullTracer):
+        yield
+        return
+    _span_name = f(t)
     msg_template, attributes = format_t_string(t)
-    with logfire.span(msg_template, _span_name=_span_name, **attributes, **code(4)):
+    with _tracer.span(msg_template, _span_name=_span_name, **attributes, **code(4)):
         yield
 
 
@@ -160,7 +208,7 @@ def wait_for_webhook_service_endpoint(namespace: str):
 @contextlib.contextmanager
 def gha_log_group(title: str) -> Generator[None, Any, None]:
     """Prints the starting and ending magic strings for GitHub Actions line group in log."""
-    with logfire.span(title):
+    with _tracer.span(title):
         print(f"::group::{title}", file=sys.stdout)
         sys.stdout.flush()
         try:

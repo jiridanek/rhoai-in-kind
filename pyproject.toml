@@ -5,10 +5,15 @@ description = "Runs OpenShift AI Workbenches in GitHub Actions"
 requires-python = ">=3.14, <3.15"
 dependencies = [
     "boto3",  # used by deploy.py create_buckets() to provision MinIO/S3 buckets
+]
+
+[project.optional-dependencies]
+tracing = [
     "logfire",  # OpenTelemetry tracing for deploy.py's steps/shell commands
     "opentelemetry-exporter-otlp-proto-grpc",  # OTEL_EXPORTER_OTLP_PROTOCOL=grpc: logfire's own exporter is HTTP-only
     "opentelemetry-instrumentation-botocore",  # logfire has no built-in boto3/botocore instrumentor
 ]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
