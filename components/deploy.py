@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING
 import certs
 
 # rhoai_in_kind lives in ../src; put it on the path so this script runs under a
-# plain interpreter (CI: `python components/deploy.py`) as well as under an
-# editable install (local uv venv).
+# plain interpreter (e.g. `python components/deploy.py` for local debugging) as well as under
+# `uv run components/deploy.py` (CI's normal path, which already puts the editable src/ install
+# on sys.path via the venv, but a no-op insert here is harmless either way).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
 from rhoai_in_kind import (
@@ -376,13 +377,7 @@ def _deploy(workbench_branch: str) -> None:
         # tf.defer(None, lambda _: sh(
         #     "timeout 120s bash -c 'while ! kubectl get --namespace=minio secret/aws-connection-pipeline-artifacts; do sleep 1; done'"))
         def create_buckets(_):
-            try:
-                import boto3
-            except ImportError:
-                python = sys.executable
-                # python = "/opt/homebrew/bin/python3"
-                sh(f"{python} -m pip install boto3")
-                import boto3
+            import boto3
 
             # MINIO_ROOT_USER=sh("oc get -n minio secret minio-root-user -o template --template '{{.data.MINIO_ROOT_USER}}'", stdout=subprocess.PIPE).stdout.strip()
             MINIO_ROOT_USER = "AWS_ACCESS_KEY_ID"

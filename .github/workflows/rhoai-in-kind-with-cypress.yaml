@@ -62,13 +62,18 @@ jobs:
           # `npm ci` at the root needs every workspace (backend, packages/*, frontend, ...) plus
           # the single root package-lock.json to be present.
 
-      # Otherwise we may end up with a random Python version?
-      # https://github.com/jiridanek/rhoai-in-kind/issues/16
-      - uses: actions/setup-python@v7
-        id: setup-python
+      # https://docs.astral.sh/uv/guides/integration/github/#installation
+      # https://github.com/astral-sh/setup-uv
+      # Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and caches
+      # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
           python-version: '3.14'
-          pip-version: '26.2.1'
+
+      - name: Install Python dependencies
+        run: uv sync --locked
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
@@ -114,9 +119,7 @@ jobs:
           kind load docker-image docker.io/istio/pilot:1.26.2
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+        run: uv run --no-sync components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
 
       - name: Print nbc logs
         if: "!cancelled()"
@@ -179,7 +182,7 @@ jobs:
       - name: Compute test-output name
         if: "!cancelled()"
         id: artifact-name
-        shell: python {0}
+        shell: uv run --no-sync python {0}
         # language: python
         run: |
           import pathlib
@@ -225,11 +228,9 @@ jobs:
           kubectl logs -n redhat-ods-applications -l app=odh-notebook-controller
 
       - name: Collect logs
-        run: ${PYTHON3} components/logs.py
+        run: uv run --no-sync components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7

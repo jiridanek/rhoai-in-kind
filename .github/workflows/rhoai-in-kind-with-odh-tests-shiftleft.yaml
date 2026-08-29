@@ -42,13 +42,19 @@ jobs:
           ref: ${{ inputs.test_ref || '94670b336c632ac2c0022b347444b687d9384327' }}
           path: opendatahub-tests
 
-      # Otherwise we may end up with a random Python version?
-      # https://github.com/jiridanek/rhoai-in-kind/issues/16
-      - uses: actions/setup-python@v7
-        id: setup-python
+      # https://docs.astral.sh/uv/guides/integration/github/#installation
+      # https://github.com/astral-sh/setup-uv
+      # Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and caches
+      # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step.
+      - name: Install uv (root project deps)
+        uses: astral-sh/setup-uv@v10.0.1
         with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
           python-version: '3.14'
-          pip-version: '26.2.1'
+
+      - name: Install Python dependencies
+        run: uv sync --locked
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
@@ -94,16 +100,14 @@ jobs:
           kind load docker-image docker.io/istio/pilot:1.26.2
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+        run: uv run --no-sync components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
 
       # https://docs.astral.sh/uv/guides/integration/github/#installation
       # https://github.com/astral-sh/setup-uv
-      # No separate actions/setup-python step: `uv run` (below) provisions a Python interpreter
-      # matching opendatahub-tests/pyproject.toml's requires-python itself, downloading one if
-      # the runner's pre-installed interpreters don't already satisfy it.
-      - name: Install uv
+      # Separate cache from the root-project one above: `uv run` below (opendatahub-tests's own
+      # pyproject.toml/uv.lock) provisions whatever interpreter *that* project's requires-python
+      # needs, independently of the root project's 3.14 pin.
+      - name: Install uv (opendatahub-tests deps)
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -133,11 +137,9 @@ jobs:
           OC_BINARY_PATH: /usr/local/bin/oc
 
       - name: Collect logs
-        run: ${PYTHON3} components/logs.py
+        run: uv run --no-sync components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7

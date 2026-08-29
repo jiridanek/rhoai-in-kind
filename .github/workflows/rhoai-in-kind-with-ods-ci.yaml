@@ -198,13 +198,21 @@ jobs:
           ref: ${{ inputs.test_ref || 'release-2.25' }}
           path: ods-ci
 
-      # Otherwise we may end up with a random Python version?
-      # https://github.com/jiridanek/rhoai-in-kind/issues/16
-      - uses: actions/setup-python@v7
-        id: setup-python
+      # https://docs.astral.sh/uv/guides/integration/github/#installation
+      # https://github.com/astral-sh/setup-uv
+      # Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and caches
+      # ~/.cache/uv keyed on uv.lock, replacing the old bare actions/setup-python step. Note
+      # there's a second, unrelated setup-python further below (3.11, for ods-ci's own Poetry
+      # env) - this one only provisions the interpreter deploy.py/logs.py run under.
+      - name: Install uv (root project deps)
+        uses: astral-sh/setup-uv@v10.0.1
         with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
           python-version: '3.14'
-          pip-version: '26.2.1'
+
+      - name: Install Python dependencies
+        run: uv sync --locked
 
       # Pulling large images (pytorch, tensorflow) we are otherwise running out of disk apace
       - name: Relocate docker data dir
@@ -291,7 +299,7 @@ jobs:
       # the version istiod actually needs. No automated check ties these together; if this ever
       # drifts again, `istioctl install` will still work, just without the pre-pull benefit.
       - name: Pre-pull istio image via image-puller DaemonSet
-        shell: python {0}
+        shell: uv run --no-sync python {0}
         # language: python
         run: |
           import json
@@ -348,7 +356,7 @@ jobs:
       # `kubectl wait` budget before the pull had even started. See pulling_timings.md.
       - name: Pre-pull matrix-specified images sequentially (best-effort, before deploy.py)
         if: matrix.prepull_images
-        shell: python {0}
+        shell: uv run --no-sync python {0}
         # language: python
         run: |
           import json
@@ -385,9 +393,7 @@ jobs:
           NOTEBOOK_IMAGE_TAG: ${{ env.NOTEBOOK_IMAGE_TAG }}
 
       - name: Deploy stuff into Kubernetes
-        run: ${PYTHON3} components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
+        run: uv run --no-sync components/deploy.py --workbench-branch=${{ env.WORKBENCH_BRANCH }}
 
       # Phase 2 of the two-phase pre-pull (see phase 1's comment above): one DaemonSet *per*
       # image now, so up to maxParallelImagePulls of them can pull concurrently - safe here
@@ -400,7 +406,7 @@ jobs:
       # instead of adding pure wall-clock time on top of them.
       - name: Pre-pull matrix-specified images via image-puller DaemonSet
         if: matrix.prepull_images
-        shell: python {0}
+        shell: uv run --no-sync python {0}
         # language: python
         run: |
           import json
@@ -542,11 +548,9 @@ jobs:
           ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix }}
 
       - name: Collect logs
-        run: ${PYTHON3} components/logs.py
+        run: uv run --no-sync components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
-        env:
-          PYTHON3: "${{ steps.setup-python.outputs.python-path }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7
