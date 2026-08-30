@@ -21,3 +21,30 @@ patches:
       version: v1
       kind: Deployment
       name: argocd-server
+  # Native OTLP tracing: server/repo-server/application-controller each call traceutil.InitTracer
+  # when their own *_OTLP_ADDRESS env var is non-empty (confirmed in argo-cd v3.5.1 source,
+  # cmd/argocd-{server,repo-server,application-controller}/commands). All three of those env vars
+  # already read the SAME argocd-cmd-params-cm key (otlp.address) in install.yaml - confirmed by
+  # inspecting the built manifest - so one ConfigMap key covers all three, no per-Deployment env
+  # patch needed. *_OTLP_INSECURE already defaults to true, matching the plaintext-OTLP collector
+  # this points at.
+  #
+  # Points at components/14-otel-collector's otel-collector-gateway Service (in-cluster DNS -
+  # ArgoCD pods are on the regular pod network with working CoreDNS, confirmed live via
+  # `kubectl run --rm -i --image=busybox nslookup host.docker.internal`, so no pinned-IP
+  # workaround is needed here unlike kube-apiserver's hostNetwork static pod). Confirmed live
+  # (2026-08-30) that despite this env var being correctly set, argocd-server was not actually
+  # emitting any traces - `ARGOCD_SERVER_OTLP_ADDRESS` showed up fine under `kubectl exec ... env`,
+  # but Aspire's `argocd-server` resource had zero traces and its logs never mention otlp/otel at
+  # all. Root cause not yet found - this patch alone does not fix that; kept pointed at the
+  # gateway for when/if it does start emitting, for the same trace-consistency reason as
+  # components/13-apiserver-tracing/apiserver-tracing.yaml.
+  - patch: |-
+      - op: add
+        path: /data
+        value:
+          otlp.address: otel-collector-gateway.otel-collector.svc.cluster.local:4317
+    target:
+      version: v1
+      kind: ConfigMap
+      name: argocd-cmd-params-cm

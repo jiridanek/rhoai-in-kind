@@ -1,0 +1,12 @@
+# Opt-in: collects kubelet resource metrics (CPU/RAM per node/pod/container) and exports them
+# via OTLP to the same local collector as components/13-apiserver-tracing (see its comments for
+# the host.docker.internal reachability notes). Not applied by CI or the default local flow -
+# apply manually with:
+#
+#   kubectl apply -k components/14-otel-collector
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - manifests.yaml
