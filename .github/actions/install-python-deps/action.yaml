@@ -1,0 +1,17 @@
+name: Install Python dependencies
+description: >-
+  Runs `uv sync --locked` for the root project.
+
+inputs:
+  python-version:
+    description: 'Python version to use (from setup-uv-rhoai-in-kind output)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Python dependencies
+      shell: bash
+      run: uv sync --locked
+      env:
+        UV_PYTHON: ${{ inputs.python-version }}
