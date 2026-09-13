@@ -32,7 +32,7 @@ spec:
     #  https://github.com/opendatahub-io/data-science-pipelines-operator/blob/stable-2.x/config/base/params.env
     # v2.15.1 is what rhoai-2.25 actually ships, per
     #  https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3351838012
-    targetRevision: v2.15.1
+    targetRevision: v2.18.0
     kustomize:
       patches:
         - target:
