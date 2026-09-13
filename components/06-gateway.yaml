@@ -1,4 +1,17 @@
 ---
+# The meshless gateway lives in istio-system. The dashboard NetworkPolicy
+# (rhods-dashboard-allow-ports) only allows ingress from namespaces labeled
+# network.openshift.io/policy-group=ingress (or same-namespace pods); without
+# this label the gateway to dashboard:8443 path is silently dropped and the
+# dashboard external URL times out (000). Applied as a Namespace manifest so
+# the label persists across deploys (kubectl apply merges the label).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    network.openshift.io/policy-group: ingress
+---
 apiVersion: v1
 kind: Service
 metadata:

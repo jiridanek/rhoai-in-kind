@@ -235,3 +235,35 @@ Atlassian semantic search returned broad results; direct issue fetches above wer
 3. Add a 3.x-only patch replacing the current origin-oauth-proxy substitution; keep 2.x OAuth proxy behavior unchanged.
 4. Re-run the auth customization test and inspect all sidecar resources and readiness.
 5. Add BYOIDC research/tests only after the kube-rbac-proxy baseline works; explicitly model token audience and SAR behavior based on RHOAIENG-54751.
+
+## Elyra / Cypress browser-test session (3.x in-kind)
+
+Objective: run the shorter Elyra Sanity robot test (ods-ci) plus a couple of cypress workbenches specs against the 3.x in-kind probe. Time-boxed scope: fix gateway routing + install chromedriver.
+
+### Infrastructure fixed (driver/browser/cluster now work end-to-end for launch)
+
+1. **Gateway routing (dashboard external URL was 000/unreachable).** Root cause was NOT istio SNI/mTLS but a **NetworkPolicy**: `rhods-dashboard-allow-ports` (redhat-ods-applications) only allows ingress from pods in a namespace labeled `network.openshift.io/policy-group=ingress` (or same-namespace pods). `istio-system` (the meshless `gateway`) lacked the label, so gateway→dashboard:8443 was silently dropped. Fix (currently live cluster state only — must be persisted into deploy.py):
+   `kubectl label ns istio-system network.openshift.io/policy-group=ingress --overwrite`
+   After: `https://rhods-dashboard.127.0.0.1.sslip.io/` returns 401 (reachable). (Earlier ServiceEntry/DestinationRule tls=DISABLE experiments were red herrings and were removed.)
+2. **chromedriver**: Chrome 153.0.8010.36 + matching chromedriver 153.0.8010.36 (mac-arm64, chrome-for-testing) at /tmp/chromedriver.
+3. **Selenium Manager cannot run in the sandbox** — the bundled `selenium-manager` binary panics on a blocked syscall (`metadata.rs:168` PermissionDenied). Fix: a fake `selenium-manager` via `SE_MANAGER_PATH` that returns the local Chrome + chromedriver paths as the expected JSON, plus a one-line patch to selenium 4.13 `get_binary()` (`SE_MANAGER_PATH` was used as a str but `path.is_file()` needs a `Path`). With this, `webdriver.Chrome()` launches (verified).
+4. **Chrome sandbox**: added `--user-data-dir=/tmp/chrome-profile` (+ `--disable-crash-reporter`) to the test-variables BROWSER options (Chrome could not create a default user-data-dir under the sandbox).
+5. **run_robot_test.sh Darwin bug**: line 379 `mktemp -d "${TEST_ARTIFACT_DIR}" -t ...` is invalid on macOS (TEST_ARTIFACT_DIR ends up empty and the whole run mis-parses). Fixed to `mktemp -d -p "${TEST_ARTIFACT_DIR}" ods-ci-...-XXXXXXXXXX`.
+
+### Elyra Sanity result (ods-ci release-2.25)
+
+The test now RUNS (driver, browser, cluster, project-namespace creation all work) but FAILS at the login step.
+
+- Test: `Verify Pipelines Integration With Elyra When Using Standard Data Science Image` (Sanity, ODS-2197); image `Jupyter | Data Science | CPU | Python 3.12`, runtime `Runtime | Datascience | CPU | Python 3.12`.
+- Result: 1 test, 1 failed. Suite Setup `Launch Data Science Project Main Page` (the OAuth login) never completed; the project was never created (`PROJECT_TO_DELETE` unset in teardown); a chromedriver crash in teardown.
+- **Root cause = the 3.x dashboard auth does not support the browser login flow.** The dashboard's `kube-rbac-proxy` (port 8443 → upstream 8080) requires a valid token for **every** path including the SPA: `/`, `/index.html`, `/api`, `/healthz` all return 401 "Unauthorized". With the SPA blocked, the React app cannot load to start the OAuth dance (chicken-and-egg). The 2.x probe had `origin-oauth-proxy` performing the server-side 302-to-login + session; the 3.x probe uses `kube-rbac-proxy` (token-review based) with **no OAuth redirect layer**, so a fresh browser can never obtain a token. This is a substrate gap, not a test defect.
+
+### Cypress (odh-dashboard v3.3.1-odh)
+
+Would hit the **same** dashboard-auth gap (cypress e2e workbenches specs use `cy.visit(ODH_DASHBOARD_URL)` + the same OAuth login). Environment: node 20, `npm ci` at the monorepo root, `CY_TEST_CONFIG=<test-variables.yml> npm run cypress:run -- -b chrome --spec '...'` in `frontend/`; workbenches specs under `packages/cypress/cypress/tests/e2e/dataScienceProjects/workbenches/` (`workbenches.cy.ts`, `testWorkbenchControlSuite`, `testWorkbenchCreation`, `testWorkbenchImages`, `testWorkbenchStatus`, `testWorkbenchVariables`).
+
+### Remaining substrate work to make browser tests pass
+
+The 3.x in-kind probe needs a browser-OAuth path in front of the dashboard's kube-rbac-proxy: either (a) add an OAuth redirect layer (analogous to 2.x origin-oauth-proxy) that 302s unauthenticated browsers to the fake oauth-server, logs in, and issues a K8s token the kube-rbac-proxy accepts, or (b) configure the dashboard to serve the SPA unauthenticated so the React app drives token acquisition. Option (a) is the closer analog to the proven 2.x flow. Until then, API-token-based tests (the committed notebook-sidecar spike) pass, but browser-login-based tests (elyra, cypress e2e) fail at login.
+
+> Note: the istio-system namespace label (gateway-routing fix) is applied only to the live cluster so far; persist it into deploy.py and re-verify after any redeploy.
