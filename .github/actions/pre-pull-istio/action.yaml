@@ -1,0 +1,21 @@
+name: Pre-pull istio inside kind cluster
+description: >-
+  Pre-pulls the istio/pilot image on the host and loads it into the kind
+  cluster, so `istioctl install` (run by deploy.py) doesn't cold-pull it.
+  CAUTION: the image must match ISTIO_VERSION in components/deploy.py - a
+  drifted pre-pull is silently a no-op.
+
+inputs:
+  image:
+    description: 'Full istio/pilot image reference'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Pre-pull istio inside kind cluster
+      shell: bash
+      run: |
+        set -Eeuxo pipefail
+        timeout 120s bash -c 'while ! docker pull ${{ inputs.image }}; do sleep 1; done'
+        kind load docker-image ${{ inputs.image }}

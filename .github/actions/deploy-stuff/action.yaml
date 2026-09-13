@@ -1,0 +1,20 @@
+name: Deploy stuff into Kubernetes
+description: >-
+  Runs components/deploy.py to deploy the stack into the kind cluster.
+
+inputs:
+  workbench-branch:
+    description: 'Workbench branch to deploy'
+    required: true
+  python-version:
+    description: 'Python version to use (from setup-uv-rhoai-in-kind output)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy stuff into Kubernetes
+      shell: bash
+      run: uv run --no-sync components/deploy.py --workbench-branch=${{ inputs.workbench-branch }}
+      env:
+        UV_PYTHON: ${{ inputs.python-version }}

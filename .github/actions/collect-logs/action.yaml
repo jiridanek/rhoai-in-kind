@@ -1,0 +1,23 @@
+name: Collect logs
+description: >-
+  Runs components/logs.py to collect a debug bundle from the cluster.
+
+inputs:
+  python-version:
+    description: 'Python version to use (from setup-uv-rhoai-in-kind output)'
+    required: true
+
+outputs:
+  debug_bundle_dir:
+    description: 'Path to the collected debug bundle (empty if none)'
+    value: ${{ steps.collect-logs.outputs.debug_bundle_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Collect logs
+      id: collect-logs
+      shell: bash
+      run: uv run --no-sync components/logs.py
+      env:
+        UV_PYTHON: ${{ inputs.python-version }}

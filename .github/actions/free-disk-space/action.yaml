@@ -1,0 +1,12 @@
+name: Free disk space and swapoff
+description: >-
+  Currently just prints disk occupancy.
+  See https://github.com/jiridanek/rhoai-in-kind/issues/10.
+
+runs:
+  using: composite
+  steps:
+    - name: Print disk occupancy
+      shell: bash
+      run: |
+        df -h

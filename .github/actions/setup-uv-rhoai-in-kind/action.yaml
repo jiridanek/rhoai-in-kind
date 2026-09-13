@@ -1,0 +1,22 @@
+name: Install uv (root project deps)
+description: >-
+  Provisions the 3.14 interpreter pyproject.toml requires (for t-strings) and
+  caches ~/.cache/uv keyed on uv.lock.
+  https://docs.astral.sh/uv/guides/integration/github/#installation
+  https://github.com/astral-sh/setup-uv
+
+outputs:
+  python-version:
+    description: 'The Python version provisioned by setup-uv'
+    value: ${{ steps.setup-uv.outputs.python-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv (root project deps)
+      id: setup-uv
+      uses: astral-sh/setup-uv@v10.0.1
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+        python-version: '3.14'

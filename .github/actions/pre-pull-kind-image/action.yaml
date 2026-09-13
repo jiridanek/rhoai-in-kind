@@ -1,0 +1,17 @@
+name: Pre-pull the kind image
+description: >-
+  Pre-pulls the kindest/node image with a retry loop.
+  CAUTION: the image must match the node_image used by the kind-cluster step -
+  a drifted pre-pull is silently a no-op.
+
+inputs:
+  image:
+    description: 'Full kindest/node image reference (tag + digest)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Pre-pull the kind image
+      shell: bash
+      run: timeout 120s bash -c 'while ! docker pull ${{ inputs.image }}; do sleep 1; done'

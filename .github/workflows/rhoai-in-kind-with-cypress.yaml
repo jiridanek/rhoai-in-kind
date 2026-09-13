@@ -70,46 +70,30 @@ jobs:
       # below sets it explicitly too (from this step's own output) rather than relying on that -
       # keeps each step correct on its own if steps are ever reordered/added between them.
       - id: setup-uv-rhoai-in-kind
-        uses: astral-sh/setup-uv@v10.0.1
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-          python-version: '3.14'
+        uses: ./.github/actions/setup-uv-rhoai-in-kind
 
       - name: Install Python dependencies
-        run: uv sync --locked
-        env:
-          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
+        uses: ./.github/actions/install-python-deps
+        with:
+          python-version: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
+
+      # https://github.com/jiridanek/rhoai-in-kind/issues/10
+      # ERROR: very rarely, we end up with a full disk in mnt directory
+      - name: Free disk space and swapoff
+        uses: ./.github/actions/free-disk-space
 
       # ERROR: failed to create cluster: failed to pull image "docker.io/kindest/node:v1.31.6":
       #  command "docker pull docker.io/kindest/node:v1.31.6" failed with error: exit status 1
-      # CAUTION: must match node_image below - a drifted pre-pull is silently a no-op (see the
-      # istio pre-pull's own history of this exact bug).
+      # CAUTION: must match node_image in the kind-cluster action - a drifted pre-pull is
+      # silently a no-op (see the istio pre-pull's own history of this exact bug).
       - name: Pre-pull the kind image
-        run: timeout 120s bash -c 'while ! docker pull docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d; do sleep 1; done'
+        uses: ./.github/actions/pre-pull-kind-image
+        with:
+          image: "docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d"
 
       - name: Kubernetes KinD Cluster
         id: kind-cluster
-        uses: helm/kind-action@v1
-        with:
-          version: v0.32.0
-          # Pinned to v1.34.11 rather than kind v0.32.0's own newer default node image
-          # (v1.36.1) - kind release notes recommend pinning by digest, not just tag, until node
-          # images get a different tagging scheme, which this still does.
-          # Was pinned to v1.31.6 since April 2025 over a "dashboard tests fail on k8s 1.32"
-          # comment that turned out to be unrelated to the Kubernetes version at all (see
-          # components/deploy.py's "Check storage class" step and PR #77).
-          # v1.36.1 was tried and reverted (see issue #98): Kubernetes v1.35 kubelet dropped the
-          # container name from Created/Started event messages ("Container created" instead of
-          # "Created container: <name>"), which breaks odh-dashboard's message-based oauth-proxy
-          # detection in the Workbench status Progress tab (testWorkbenchControlSuite.cy.ts,
-          # testWorkbenchStatus.cy.ts) - confirmed via kubelet source diff and unfixed on
-          # odh-dashboard main as of this writing. v1.34.11 is the latest kind image still on the
-          # pre-v1.35 kubelet message format, and matches what OpenShift 4.21 itself ships.
-          # https://hub.docker.com/r/kindest/node/tags
-          node_image: "docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d"
-          cluster_name: kind
-          config: components/00-kind-cluster.yaml
+        uses: ./.github/actions/kind-cluster
 
       # ✘ Istiod encountered an error: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
       #    Deployment/istio-system/istiod (container failed to start: ImagePullBackOff: Back-off pulling image "docker.io/istio/pilot:1.25.1")Error: failed to install manifests: failed to wait for resource: resources not ready after 5m0s: context deadline exceeded
@@ -119,15 +103,15 @@ jobs:
       # the version istiod actually needs. No automated check ties these together; if this ever
       # drifts again, `istioctl install` will still work, just without the pre-pull benefit.
       - name: Pre-pull istio inside kind cluster
-        run: |
-          set -Eeuxo pipefail
-          timeout 120s bash -c 'while ! docker pull docker.io/istio/pilot:1.26.2; do sleep 1; done'
-          kind load docker-image docker.io/istio/pilot:1.26.2
+        uses: ./.github/actions/pre-pull-istio
+        with:
+          image: "docker.io/istio/pilot:1.26.2"
 
       - name: Deploy stuff into Kubernetes
-        run: uv run --no-sync components/deploy.py --workbench-branch=${{ matrix.workbench_branch }}
-        env:
-          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
+        uses: ./.github/actions/deploy-stuff
+        with:
+          workbench-branch: ${{ matrix.workbench_branch }}
+          python-version: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
 
       - name: Print nbc logs
         if: "!cancelled()"
@@ -237,11 +221,11 @@ jobs:
           kubectl logs -n redhat-ods-applications -l app=odh-notebook-controller
 
       - name: Collect logs
-        run: uv run --no-sync components/logs.py
         id: collect-logs
         if: "!cancelled() && steps.kind-cluster.outcome == 'success'"
-        env:
-          UV_PYTHON: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
+        uses: ./.github/actions/collect-logs
+        with:
+          python-version: "${{ steps.setup-uv-rhoai-in-kind.outputs.python-version }}"
 
       - name: Archive cluster-logs
         uses: actions/upload-artifact@v7

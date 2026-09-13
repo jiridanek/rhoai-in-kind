@@ -1,0 +1,25 @@
+name: Kubernetes KinD Cluster
+description: >-
+  Creates a kind cluster via helm/kind-action.
+  Pinned to v1.34.11 (not kind v0.32.0's default v1.36.1) because Kubernetes
+  v1.35 kubelet dropped the container name from Created/Started event messages,
+  which breaks odh-dashboard's message-based oauth-proxy detection (issue #98).
+  v1.34.11 is the latest kind image still on the pre-v1.35 kubelet message
+  format, and matches what OpenShift 4.21 itself ships.
+
+outputs:
+  cluster_name:
+    description: 'Name of the created kind cluster'
+    value: ${{ steps.kind-cluster.outputs.cluster_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Kubernetes KinD Cluster
+      id: kind-cluster
+      uses: helm/kind-action@v1
+      with:
+        version: v0.32.0
+        node_image: "docker.io/kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d"
+        cluster_name: kind
+        config: components/00-kind-cluster.yaml
