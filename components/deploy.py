@@ -545,6 +545,67 @@ def _deploy(workbench_branch: str) -> None:
         # the Kyverno mutation fires again on this create.
         sh("kubectl apply -f -", input=json.dumps(src))
 
+    with gha_log_group("Expose current workbench image as a 3.x semver tag (digest-pinned)"):
+        # The 3.x opendatahub-tests suite resolves the workbench tag via the product-version
+        # "stable" track (tests/workbenches/notebook_images/utils.py::_resolve_requested_tag_name):
+        # for a 3.x product version it wants a semver tag "major.minor" (e.g. "3.3"), NOT the
+        # legacy "2025.x" date tags the upstream jupyter-minimal-notebook imagestream ships. A real
+        # 3.x cluster's s2i-minimal-notebook has such a semver tag, digest-pinned by the integrated
+        # registry. Emulate that: take the current workbench image (the newest legacy tag's image),
+        # pin it to a digest, and expose it as a "3.3" semver tag on both imagestreams, so the 3.x
+        # suite's default tag resolution lands on a digest-pinned reference (utils.
+        # _resolve_docker_image_reference requires an "@sha256:" dockerImageReference).
+        # "3.3" = the 3.x target's major.minor (matches the fake rhods-operator CSV spec.version 3.3.1).
+        ODH_WORKBENCH_SEMVER_TAG = "3.3"
+
+        def _expose_semver_tag(imagestream_name: str) -> None:
+            data = json.loads(sh(
+                f"kubectl -n {REDHAT_ODS_APPLICATIONS} get imagestream {imagestream_name} -o json",
+                capture_output=True).stdout)
+            spec_tags = data.setdefault("spec", {}).setdefault("tags", [])
+            # legacy = "year.release" date tags (e.g. "2025.2"); current image = the newest one
+            legacy = [t for t in spec_tags
+                      if t.get("name", "").count(".") == 1
+                      and t.get("name", "").split(".")[0].isdigit()]
+            if not legacy:
+                return
+            legacy.sort(key=lambda t: (int(t["name"].split(".")[0]), int(t["name"].split(".")[1])))
+            current_from = (legacy[-1].get("from") or {}).get("name", "")
+            pinned = ""
+            if "@" in current_from:
+                pinned = current_from  # already digest-pinned
+            else:
+                # pin to a digest: crane when available, else fall back to the newest digest-pinned
+                # legacy tag's reference (the upstream pins the older EUS tags by digest already).
+                digest = ""
+                try:
+                    digest = sh(f"crane digest {current_from}", capture_output=True,
+                                timeout=60).stdout.strip()
+                except Exception:
+                    digest = ""
+                if digest.startswith("sha256:"):
+                    pinned = current_from.split(":", 1)[0] + "@" + digest
+                else:
+                    for t in reversed(legacy):
+                        if "@" in (t.get("from") or {}).get("name", ""):
+                            pinned = (t.get("from") or {}).get("name", "")
+                            break
+            if not pinned:
+                print(f"WARNING: no digest-pinned workbench image for {imagestream_name}; "
+                      f"skipping {ODH_WORKBENCH_SEMVER_TAG} tag", file=sys.stderr)
+                return
+            tag = {"name": ODH_WORKBENCH_SEMVER_TAG, "from": {"kind": "DockerImage", "name": pinned}}
+            existing = next((i for i, t in enumerate(spec_tags)
+                             if t.get("name") == ODH_WORKBENCH_SEMVER_TAG), None)
+            if existing is not None:
+                spec_tags[existing] = tag
+            else:
+                spec_tags.append(tag)
+            sh("kubectl apply -f -", input=json.dumps(data))
+
+        _expose_semver_tag("jupyter-minimal-notebook")
+        _expose_semver_tag("s2i-minimal-notebook")
+
     with gha_log_group("Install Service CA Operator"):
         sh("kubectl label node --all node-role.kubernetes.io/master=")
         sh("timeout 30s bash -c 'while ! kubectl apply -k components/05-ca-operator; do sleep 1; done'")

@@ -17,4 +17,4 @@ resources:
   - components.platform.opendatahub.io_dashboards.yaml
 #  - servingruntime.yaml
 #  - inferenceservice.yaml
-#  - auth.yaml
+  - auth.yaml

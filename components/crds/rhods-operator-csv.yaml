@@ -1,0 +1,18 @@
+---
+# The 3.x odh-tests suite reads the ODH operator's ClusterServiceVersion (a name matching
+# rhods|opendatahub) from the DSCI's applications_namespace to derive the product version
+# (get_product_version in utilities/infra.py). The in-kind base deploys the 3.x components
+# without an OLM operator CSV in the applications namespace, so the 3.x suite errors with
+# "Operator ClusterServiceVersion not found". A minimal fake CSV is enough: only spec.version
+# is read. Version tracks the 3.x dashboard ref (v3.3.1-odh).
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: rhods-operator.3.3.1
+  namespace: redhat-ods-applications
+spec:
+  displayName: Red Hat OpenShift AI
+  version: "3.3.1"
+  replaces: rhods-operator.2.13.0
+status:
+  phase: Succeeded
