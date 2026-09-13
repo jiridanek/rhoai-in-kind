@@ -363,8 +363,14 @@ spec:
     # whole Pod admission, so every op below is conditioned on the field actually being present.
     - patchType: JSONPatch
       jsonPatch:
+        # The notebook auth sidecar (kube-rbac-proxy) is a user-workload component whose
+        # requests/limits must stay customizable (the 3.x opendatahub-tests assert them via
+        # notebooks.opendatahub.io/auth-sidecar-* annotations). Skip it so this in-kind
+        # CPU-budget workaround only strips the system pods (dashboard, main notebook container)
+        # that must fit the small kind node. g.list.indexOf(c) still resolves the container's
+        # ORIGINAL index for the patch path, so filtering before .map is index-safe.
         expression: >-
-          variables.containerGroups.map(g, g.list.map(c, [
+          variables.containerGroups.map(g, g.list.filter(c, !has(c.name) || c.name != "kube-rbac-proxy").map(c, [
             (has(c.resources) && has(c.resources.requests) && has(c.resources.requests.cpu))
               ? [JSONPatch{op: "remove", path: "/spec/" + g.kind + "/" + string(g.list.indexOf(c)) + "/resources/requests/cpu"}] : [],
             (has(c.resources) && has(c.resources.limits) && has(c.resources.limits.cpu))
