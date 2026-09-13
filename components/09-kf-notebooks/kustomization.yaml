@@ -31,8 +31,8 @@ resources:
   # https://github.com/opendatahub-io/kubeflow/releases/tag/v1.10.0-6
   # https://github.com/opendatahub-io/opendatahub-community/issues/183#issuecomment-3339632379
   # https://issues.redhat.com/browse/RHOAIENG-32633
-  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/openshift?ref=v1.10.0-5&submodules=false
-  - https://github.com/opendatahub-io/kubeflow//components/odh-notebook-controller/config/base?ref=v1.10.0-5&submodules=false
+  - https://github.com/opendatahub-io/kubeflow//components/notebook-controller/config/overlays/openshift?ref=v1.10.0-15&submodules=false
+  - https://github.com/opendatahub-io/kubeflow//components/odh-notebook-controller/config/base?ref=v1.10.0-15&submodules=false
   - culler-config.yaml
 
 patches:
