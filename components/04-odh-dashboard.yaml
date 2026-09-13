@@ -77,6 +77,16 @@ spec:
           target:
             kind: ClusterRole
             name: rhods-dashboard
+        # 3.x in-kind lane: omit the maas-ui (MaaS) container. It needs the 3.x
+        # cluster-domain substrate (GATEWAY_DOMAIN env / MaaS CRDs) that the 2.x
+        # base lacks; the core 4-container dashboard is fully up without it.
+        # See docs/odh-3x-dashboard-probe-findings.md.
+        - patch: |-
+            - op: remove
+              path: /spec/template/spec/containers/4
+          target:
+            kind: Deployment
+            name: rhods-dashboard
       # https://github.com/red-hat-data-services/odh-dashboard/blob/131c0da21d6434af027634e861a157f2a501af78/Dockerfile.konflux#L24-L28
 #      patches:
 #        # add / replace / remove
