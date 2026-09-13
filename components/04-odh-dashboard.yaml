@@ -36,7 +36,7 @@ spec:
     # same problem as pipelines, stable-2.x references main
     # and v2.37.1-odh seems the last without bring-your-own-id-connect
     # https://github.com/opendatahub-io/odh-dashboard/releases/tag/v2.37.1-odh
-    targetRevision: v2.37.1-odh
+    targetRevision: v3.3.1-odh
     kustomize:
       patches:
         # https://github.com/opendatahub-io/odh-dashboard/pull/4099
@@ -62,7 +62,7 @@ spec:
           patch: |-
             - op: replace
               path: /data/odh-dashboard-image
-              value: quay.io/opendatahub/odh-dashboard:v2.37.1-odh
+              value: quay.io/opendatahub/odh-dashboard:v3.3.1-odh
         - patch: |-
             - op: add
               path: /rules/-
@@ -103,7 +103,7 @@ spec:
         - registry.redhat.io/openshift4/ose-oauth-proxy-rhel9@sha256:ca21e218e26c46e3c63d926241846f8f307fd4a586cc4b04147da49af6018ef5=quay.io/jdanek/origin-oauth-proxy:latest
         - registry.redhat.io/openshift4/ose-oauth-proxy@sha256:4f8d66597feeb32bb18699326029f9a71a5aca4a57679d636b876377c2e95695=quay.io/jdanek/origin-oauth-proxy:latest
 #        - quay.io/opendatahub/odh-dashboard=quay.io/opendatahub/odh-dashboard:v2.38.2-odh
-        - quay.io/opendatahub/odh-dashboard=quay.io/opendatahub/odh-dashboard:v2.37.1-odh
+        - quay.io/opendatahub/odh-dashboard=quay.io/opendatahub/odh-dashboard:v3.3.1-odh
       replicas:
         - name: rhods-dashboard
           count: 1
