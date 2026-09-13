@@ -1,0 +1,23 @@
+# 3.x: the odh-notebook-controller creates the notebook ServiceAccount (and the kube-rbac-proxy
+# sidecar objects) ONLY when the notebook carries the `notebooks.opendatahub.io/inject-auth`
+# annotation. On a real cluster the ODH/DSC operator sets it; the in-kind fake control plane does
+# not, so without this the 3.x notebook StatefulSet references a ServiceAccount that is never
+# created and pod creation is forbidden. This policy emulates the operator by injecting the
+# annotation into every Notebook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: notebook-inject-auth-annotation
+spec:
+  rules:
+    - name: add-inject-auth-annotation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Notebook
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              notebooks.opendatahub.io/inject-auth: "true"
