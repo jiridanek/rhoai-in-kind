@@ -24,10 +24,10 @@ dashboard_target_revision: v3.3.1-odh   # candidates: v3.4.4-odh, v3.5.0-odh, v3
 workbench_branch: TODO                  # 2.x = 2025b / v1.36.0 ; 3.x = newer train (e.g. 2026a?) — confirm
 notebook_image_tag: TODO                # 2.x = 2025b-v1.36 ; 3.x = <new-train>-v1.N — re-derive from cluster-logs
 # DSPO has NO stable-3.x branch (only main / stable / stable-2.x as of Sep 2025). 3.x ref = main or stable.
-dspo_target_revision: TODO              # candidates: main, stable  (no stable-3.x branch exists yet)
+dspo_target_revision: v2.18.0             # CONFIRMED in probe (odh-3x-probe): latest DSPO tag; deploys clean (1/1 Available) on the 2.x base
 # Kubeflow notebook controllers are v1.10.0-N. 3.x is in the v1.10.0-6..v1.10.0-15 range
 # (v1.10.0-6 already carries the 3.0 "AI Pipeline" rename, RHOAIENG-32633).
-notebook_controller_ref: TODO           # 2.x = v1.10.0-5 ; 3.x = v1.10.0-6..15 (confirm per ODH 3.N)
+notebook_controller_ref: v1.10.0-15      # CONFIRMED in probe (odh-3x-probe): both notebook controllers 1/1 Available
 
 # --- image overrides (per component) ----------------------------------------------
 dspo_image_overrides: TODO              # re-derive for the chosen DSPO ref (main/stable defaults are :latest = 3.x)

@@ -89,6 +89,18 @@ I inspected a real RHOAI 3.x cluster (OCP 4.19 — the current 3.x) read-only to
 
 **Decision point (RHOAI):** (a) retarget the probe to the **current 3.x (3.5+)** kustomization -> maas-ui works via GATEWAY_DOMAIN; (b) keep **3.3** and name the "automatic discovery" resource -> I add the matching 3.x-gated fake; or (c) **omit maas-ui** for the in-kind lane (the MaaS feature needs the 3.x cluster-domain substrate; the core 4/5-container dashboard is fully up).
 
+## Full 3.x stack (green, 34/34)
+
+The probe was extended beyond the dashboard to the **full 3.x stack** (option 3). Every retarget deploys clean on the **unchanged 2.x base**; the whole cluster is 34/34 Running:
+
+| Component | 2.x | 3.x (probe) | State |
+|---|---|---|---|
+| Dashboard | v2.37.1-odh | v3.3.1-odh (maas-ui omitted for the in-kind lane) | Available 4/4 |
+| DSPO (kf-pipelines) | v2.15.1 | v2.18.0 (latest DSPO tag) | Available 1/1 |
+| KF notebooks | kubeflow v1.10.0-5 | kubeflow v1.10.0-15 | Available 1/1 + 1/1 |
+
+Commits: fe6caab (DSPO v2.18.0), 39c6ab3 (notebooks v1.10.0-15), 8c8a7de (maas-ui omission). The confirmed refs are recorded in releases/3.x.yaml. The one 3.x delta remains maas-ui (the MaaS cluster-domain substrate) — see above.
+
 ## Rollback (fully reversible)
 
 ```
