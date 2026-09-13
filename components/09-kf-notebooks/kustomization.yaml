@@ -36,13 +36,23 @@ resources:
   - culler-config.yaml
 
 patches:
+  # 3.x (kubeflow v1.10.0-15+) notebook auth sidecar uses kube-rbac-proxy semantics, NOT OpenShift
+  # OAuth proxy. The controller reads --kube-rbac-proxy-image (args.1) from its
+  # odh-notebook-controller-image-parameters configmap (base params.env); the ODH upstream value is
+  # the ODH-customized kube-auth-proxy wrapper (RHOAIENG-35698). Pin the EXACT digest shipped by the
+  # v1.10.0-15 base (components/odh-notebook-controller/config/base/params.env at v1.10.0-15) so the
+  # sidecar matches the controller's kube-rbac-proxy arg surface (--secure-listen-address,
+  # --proxy-endpoints-port, --config-file, --tls-cert-file, ...). An origin-oauth-proxy binary here
+  # crash-looped because it rejects the kube-rbac-proxy flags.
+  # The 2.x lane (v1.10.0-5, branch Issue-10) keeps quay.io/jdanek/origin-oauth-proxy:latest — this
+  # override lives only on the 3.x probe branch, so the 2.x lane is unchanged.
   - target:
       kind: Deployment
       name: odh-notebook-controller-manager
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/args/1
-        value: quay.io/jdanek/origin-oauth-proxy:latest
+        value: quay.io/opendatahub/odh-kube-auth-proxy@sha256:dcb09fbabd8811f0956ef612a0c9ddd5236804b9bd6548a0647d2b531c9d01b3
   # ods-ci relies on this label in culler.robot tests
   # oc get pod -l component.opendatahub.io/name=kf-notebook-controller -n redhat-ods-applications
   - target:
