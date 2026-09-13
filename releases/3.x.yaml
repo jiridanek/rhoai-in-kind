@@ -1,0 +1,59 @@
+# RHOAI/ODH 3.x — profile. Refs researched from the upstream repos' tags/branches (GitHub API, Sep 2025).
+# KEY: RHOAI 3.x <-> ODH 3.x is 1:1 (RHOAI 3.3 == ODH 3.3, per the Feast/ODH/RHOAI version matrix),
+# so "pick a 3.x" == "pick an ODH 3.N".
+# RECOMMENDED target: the 3.3 EUS Z-stream (mirrors how 2.x is pinned to the 2.25.z EUS).
+# Values below are CONCRETE CANDIDATES. The exact per-component ref for a given ODH 3.N release
+# should be confirmed against the release tracker / a fresh cluster before relying on it
+# (see docs/odh-2x-vs-3x-organization.md, §7 decision #1).
+# CONFIRMED: ODH 3.3 = opendatahub-operator tag v3.3.0 (a clean release tag).
+name: 3.x
+default: false
+
+# deployment mode (see docs/odh-2x-vs-3x-organization.md §8): apply the 3.x STANDALONE
+# manifests directly (default, = the official DEPLOY_RHODS_OPERATOR=False mode), or drive a
+# component with its 3.x MODULE operator for higher fidelity (pilot candidate: dashboard).
+deploy_mode: manifests
+
+# --- component refs (the "which ODH version") -------------------------------------
+# Dashboard has clean per-version tags. 3.3 EUS candidate (mirrors the current 2.x v2.37.1-odh):
+dashboard_target_revision: v3.3.1-odh   # candidates: v3.4.4-odh, v3.5.0-odh, v3.6.0-ea1-odh (newer y-streams)
+# CONFIRMED: v3.3.1-odh has the SAME deploy unit as 2.x — manifests/rhoai/onprem/
+#   {README.md, apps/, kustomization.yaml, params.env, params.yaml}. So the 3.x dashboard DEPLOY is low-cost;
+# Notebooks is pinned by a release-TRAIN branch + v1.x.y tag + <train>-v1.N image tag.
+#   2.x uses train "2025b" / tag v1.36.0 / image ...:2025b-v1.36.  3.x needs a NEWER train (confirm).
+workbench_branch: TODO                  # 2.x = 2025b / v1.36.0 ; 3.x = newer train (e.g. 2026a?) — confirm
+notebook_image_tag: TODO                # 2.x = 2025b-v1.36 ; 3.x = <new-train>-v1.N — re-derive from cluster-logs
+# DSPO has NO stable-3.x branch (only main / stable / stable-2.x as of Sep 2025). 3.x ref = main or stable.
+dspo_target_revision: TODO              # candidates: main, stable  (no stable-3.x branch exists yet)
+# Kubeflow notebook controllers are v1.10.0-N. 3.x is in the v1.10.0-6..v1.10.0-15 range
+# (v1.10.0-6 already carries the 3.0 "AI Pipeline" rename, RHOAIENG-32633).
+notebook_controller_ref: TODO           # 2.x = v1.10.0-5 ; 3.x = v1.10.0-6..15 (confirm per ODH 3.N)
+
+# --- image overrides (per component) ----------------------------------------------
+dspo_image_overrides: TODO              # re-derive for the chosen DSPO ref (main/stable defaults are :latest = 3.x)
+dashboard_image: quay.io/opendatahub/odh-dashboard:v3.3.1-odh   # params.env uses :main -> override to the tag (same as 2.x)
+dashboard_oauthproxy_images: TODO       # re-derive digests from a fresh run
+# 3.x params.env ADDS two variables vs 2.x (verified v3.3.1-odh): the 04-odh-dashboard Argo override must set them:
+#   kube-rbac-proxy = quay.io/opendatahub/odh-kube-auth-proxy@sha256:dcb09fbabd8811f0956ef612a0c9ddd5236804b9bd6548a0647d2b531c9d01b3
+#   gateway-name    = data-science-gateway
+
+# --- fake control plane ------------------------------------------------------------
+fake_dsc_version: TODO
+component_cr_version: TODO
+dsc_management_states: TODO             # 3.x component set may differ (trainingoperator / modelregistry / kserve / model-mesh)
+fake_crds: components/crds              # add/replace 3.x CRDs as needed
+
+# --- tests --------------------------------------------------------------------------
+tests:
+  ods_ci_ref: release-3.3               # confirmed: ods-ci has a release-3.3 branch (3.3 target)
+  cypress_dashboard_ref: v3.3.1-odh     # must match the deployed 3.x dashboard (monorepo)
+  opendatahub_tests_ref: 3.3            # confirmed: opendatahub-tests has a 3.3 branch (3.3 target)
+  test_variables_file: components/ods-ci/test-variables.yml
+  prepull_images: TODO                  # re-derive digests from a fresh run
+
+# --- 3.x-specific notes (spike checklist) ------------------------------------------
+# [ ] dashboard monorepo: npm-workspaces + modular-architecture; do we need the mod-arch module images, or just the main dashboard image for the IDE tests?
+# [ ] bring-your-own-id-connect: 3.x oauth — does the fake oauth-server/api-extension still suffice, or new CRDs?
+# [ ] "AI Pipeline" rename (Elyra display_name, RHOAIENG-32633): test/manifest impact?
+# [ ] which fake CRDs are new/changed in 3.x?
+# [ ] DSPO: confirm main vs stable (no stable-3.x branch) and re-derive its image overrides.

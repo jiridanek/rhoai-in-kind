@@ -1,0 +1,59 @@
+# RHOAI 2.x — the current, known-good profile (rhoai-2.25 EUS Z-stream).
+# This is the DEFAULT profile. Values are extracted 1:1 from the repo today
+# (see docs/odh-2x-vs-3x-organization.md §2 for the file:line of each pin).
+# NOTE: scaffold only — not yet consumed by deploy.py / workflows (Phase P0 wires that up).
+name: 2.25.z
+default: true
+
+# --- component refs (the "which ODH version") -------------------------------------
+workbench_branch: v1.36.0              # opendatahub-io/notebooks  (deploy.py:506-508)
+notebook_image_tag: 2025b-v1.36        # quay.io tag for workbench/runtime images (ods-ci:41)
+dspo_target_revision: v2.15.1          # data-science-pipelines-operator (03-kf-pipelines.yaml:35)
+dashboard_target_revision: v2.37.1-odh # odh-dashboard (04-odh-dashboard.yaml:39)
+notebook_controller_ref: v1.10.0-5     # opendatahub-io/kubeflow (09-kf-notebooks/kustomization.yaml:34-35)
+
+# --- image overrides (per component) ----------------------------------------------
+# DSPO env overrides (03-kf-pipelines.yaml:66-71)
+dspo_image_overrides:
+  IMAGES_MLMDENVOY: quay.io/maistra/proxyv2-ubi8:2.5.0
+  IMAGES_OAUTHPROXY: quay.io/jdanek/origin-oauth-proxy
+  IMAGES_MARIADB: quay.io/fedora/mariadb-103:latest
+# Dashboard main image (04-odh-dashboard.yaml:65)
+dashboard_image: quay.io/opendatahub/odh-dashboard:v2.37.1-odh
+# Dashboard oauth-proxy image rewrites (04-odh-dashboard.yaml:103-104) — full digests required
+dashboard_oauthproxy_images:
+  - 'registry.redhat.io/openshift4/ose-oauth-proxy-rhel9@sha256:ca21e218e26c46e3c63d926241846f8f307fd4a586cc4b04147da49af6018ef5=quay.io/jdanek/origin-oauth-proxy:latest'
+  - 'registry.redhat.io/openshift4/ose-oauth-proxy@sha256:4f8d66597feeb32bb18699326029f9a71a5aca4a57679d636b876377c2e95695=quay.io/jdanek/origin-oauth-proxy:latest'
+
+# --- fake control plane ------------------------------------------------------------
+fake_dsc_version: 2.13.0               # fake CSV / DSC release version (07-dsc-dsci.yaml:11,52)
+component_cr_version: 2.22.0           # components.platform.opendatahub.io Dashboard CR (07:212)
+# Per-component managementState set (07-dsc-dsci.yaml:66-97)
+dsc_management_states:
+  codeflare: Managed
+  kserve: Managed
+  trustyai: Removed
+  ray: Managed
+  kueue: Managed
+  workbenches: Managed
+  dashboard: Managed
+  modelmeshserving: Managed
+  datasciencepipelines: Managed
+  trainingoperator: Removed
+  modelregistry: Removed
+fake_crds: components/crds             # dir applied by deploy.py "Deploy fake CRDs"
+
+# --- tests --------------------------------------------------------------------------
+tests:
+  ods_ci_ref: release-2.25             # ods-ci branch (…-with-ods-ci.yaml:198)
+  cypress_dashboard_ref: v2.37.1-odh   # odh-dashboard repo ref for cypress (…-with-cypress.yaml:15)
+  opendatahub_tests_ref: 94670b336c632ac2c0022b347444b687d9384327  # (…-with-odh-tests-shiftleft.yaml:15)
+  test_variables_file: components/ods-ci/test-variables.yml
+  # Workbench/runtime images pre-pulled in CI (ods-ci matrix prepull_images, TAG-substituted):
+  prepull_images:
+    - quay.io/opendatahub/odh-workbench-jupyter-minimal-cpu-py312-ubi9:2025b-v1.36
+    - quay.io/opendatahub/odh-workbench-codeserver-datascience-cpu-py312-ubi9:2025b-v1.36
+    - quay.io/opendatahub/odh-workbench-jupyter-pytorch-cuda-py312-ubi9:2025b-v1.36
+    - quay.io/opendatahub/odh-workbench-jupyter-tensorflow-cuda-py312-ubi9:2025b-v1.36
+    - quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36
+    - quay.io/opendatahub/odh-pipeline-runtime-datascience-cpu-py312-ubi9:2025b-v1.36
