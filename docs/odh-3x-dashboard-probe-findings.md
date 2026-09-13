@@ -64,6 +64,16 @@ maas-ui is the **only** failing container. Its args carry no domain flag (--auth
 
 **Interim conclusion (unchanged):** the 3.x dashboard retarget works; 3.x's new maas-ui container needs a discoverable cluster domain the in-kind fake control plane does not currently provide -> a bounded, 3.x-gated fake-control-plane change. The fakes (ingresscontroller/clusterversion/console) remain only in the throwaway cluster; they do not touch the working tree.
 
+## Probe status (committed on odh-3x-probe) + the precise maas-ui ask
+
+**Committed** (branch odh-3x-probe, from main 73d130e):
+- 0a3ac31 — the 3-line dashboard retarget to v3.3.1-odh (components/04-odh-dashboard.yaml).
+- 43398b0 — the 2.x/3.x organization docs + releases/2.25.z.yaml + releases/3.x.yaml.
+
+**maas-ui definitive env** (from the rendered pod): image mod-arch-maas:v3.3.1-odh; env = TIERS_CONFIGMAP_NS (via fieldRef metadata.namespace -> redhat-ods-applications) + SSL_CERT_FILE; args = CA-bundle paths only (--bundle-paths, --key-file) — **no domain flag**. So the domain is pure **API auto-discovery** against a resource in redhat-ods-applications (a tiers configmap, per the env). The 2.x base has **no tiers configmap** there and none of the 3.x MaaS/MLOps CRDs, so the discovery 404s and the container exits.
+
+**The one remaining detail (a RHOAI product detail):** the *exact* resource + field the mod-arch-maas BFF reads for the cluster domain. The mod-arch-maas source is a separate repo (GitHub code-search is auth-gated here) and is not in the local odh-dashboard checkout. Ruled out empirically: ingresscontroller (not even RBAC-allowed), clusterversion, console, and named routes (rhods-dashboard / maas-ui / odh-dashboard / maas). **Ask:** name the resource (or confirm maas-ui is optional/skippable in a non-MaaS 3.x config) -> I add the matching 3.x-gated fake to the control plane and verify 5/5.
+
 ## Rollback (fully reversible)
 
 ```
