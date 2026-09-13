@@ -74,6 +74,21 @@ maas-ui is the **only** failing container. Its args carry no domain flag (--auth
 
 **The one remaining detail (a RHOAI product detail):** the *exact* resource + field the mod-arch-maas BFF reads for the cluster domain. The mod-arch-maas source is a separate repo (GitHub code-search is auth-gated here) and is not in the local odh-dashboard checkout. Ruled out empirically: ingresscontroller (not even RBAC-allowed), clusterversion, console, and named routes (rhods-dashboard / maas-ui / odh-dashboard / maas). **Ask:** name the resource (or confirm maas-ui is optional/skippable in a non-MaaS 3.x config) -> I add the matching 3.x-gated fake to the control plane and verify 5/5.
 
+## Definitive maas-ui domain mechanism (inspected on a real RHOAI 3.x cluster)
+
+I inspected a real RHOAI 3.x cluster (OCP 4.19 — the current 3.x) read-only to resolve the maas-ui domain source. **Key finding: the mechanism is version-dependent.**
+
+- **Current 3.x (3.5+, OCP 4.19):** maas-ui's env is **GATEWAY_DOMAIN** (e.g. rh-ai.apps.ntbcudashrd.ibm.rh-ods.com), set from the **gateway-domain** key in rhoai-dashboard-params. No "automatic discovery" — the domain is injected directly, so maas-ui is healthy. The 6 MaaS/MLOps CRDs (modelregistries, inferenceservices, llamastackdistributions, featurestores, guardrailsorchestrators, auths) are installed (no instances) as part of the 3.x substrate.
+- **ODH 3.3 (v3.3.1-odh, the probe's original target):** maas-ui's env is TIERS_CONFIGMAP_NS + SSL_CERT_FILE (no GATEWAY_DOMAIN), so it falls back to **"automatic discovery of cluster domain"**, which 404s on the 2.x base.
+
+**Verified by patching the live (disposable) cluster** (all reverted; none fixed the 3.3 maas-ui): adding the gateway-domain key to rhoai-dashboard-params; adding the GATEWAY_DOMAIN env to the maas-ui container (the current-3.x mechanism — the v3.3.1-odh BFF ignores it); and installing the 6 MaaS/MLOps CRDs. The 3.3 BFF's "automatic discovery" still 404s — it reads a resource that is **auth-gated** (the mod-arch-maas Go source; not in the local odh-dashboard checkout; the kind API-server log does not record 404s).
+
+**So the 3.x maas-ui delta is now precisely characterized:**
+- **Current 3.x (3.5+):** the gateway-domain param -> GATEWAY_DOMAIN env. The 3.x profile already sets gateway-domain; the in-kind lane is green once the dashboard uses the current-3.x kustomization (which injects GATEWAY_DOMAIN from the param). No MaaS CRD instances needed.
+- **ODH 3.3:** the "automatic discovery" resource — a RHOAI product detail in the auth-gated mod-arch-maas source.
+
+**Decision point (RHOAI):** (a) retarget the probe to the **current 3.x (3.5+)** kustomization -> maas-ui works via GATEWAY_DOMAIN; (b) keep **3.3** and name the "automatic discovery" resource -> I add the matching 3.x-gated fake; or (c) **omit maas-ui** for the in-kind lane (the MaaS feature needs the 3.x cluster-domain substrate; the core 4/5-container dashboard is fully up).
+
 ## Rollback (fully reversible)
 
 ```
