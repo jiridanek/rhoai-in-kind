@@ -1,0 +1,83 @@
+diff --git i/http.go w/http.go
+index 32fd623..2714483 100644
+--- i/http.go
++++ w/http.go
+@@ -76,9 +76,10 @@ func (s *Server) ServeHTTPS(ctx context.Context) {
+ 	addr := s.Opts.HttpsAddress
+ 
+ 	config := oscrypto.SecureTLSConfig(&tls.Config{})
+-	if config.NextProtos == nil {
+-		config.NextProtos = []string{"http/1.1"}
+-	}
++	// Force HTTP/1.1 only: the k8s websocket proxy (wsutil) needs to hijack
++	// the connection, which Go's HTTP/2 ResponseWriter does not support.
++	// Without this, websocket upgrades arrive over h2 and fail with 500.
++	config.NextProtos = []string{"http/1.1"}
+ 
+ 	var err error
+ 	servingCertProvider, err := dynamiccertificates.NewDynamicServingContentFromFiles("serving", s.Opts.TLSCertFile, s.Opts.TLSKeyFile)
+diff --git i/logging_handler.go w/logging_handler.go
+index 17fca97..60f70d5 100644
+--- i/logging_handler.go
++++ w/logging_handler.go
+@@ -4,6 +4,7 @@
+ package main
+ 
+ import (
++	"bufio"
+ 	"fmt"
+ 	"io"
+ 	"net"
+@@ -60,6 +61,17 @@ func (l *responseLogger) Status() int {
+ 	return l.status
+ }
+ 
++// Hijack delegates to the underlying ResponseWriter when it supports it,
++// so that websocket upgrade requests can pass through the logging wrapper.
++// Without this, the downstream wsutil proxy fails with "Not a hijacker?".
++func (l *responseLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
++	hj, ok := l.w.(http.Hijacker)
++	if !ok {
++		return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
++	}
++	return hj.Hijack()
++}
++
+ func (l *responseLogger) Size() int {
+ 	return l.size
+ }
+diff --git i/oauthproxy.go w/oauthproxy.go
+index 2047daf..30b9e0d 100644
+--- i/oauthproxy.go
++++ w/oauthproxy.go
+@@ -854,6 +854,13 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
+ 	if ((!tokenProvidedByClient && p.PassAccessToken) || (tokenProvidedByClient && p.PassUserBearerToken)) && session.AccessToken != "" {
+ 		setRequestHeader(req, "X-Forwarded-Access-Token", session.AccessToken)
+ 	}
++	// In-kind: the downstream kube-rbac-proxy reads the token from the
++	// Authorization header for its real K8s TokenReview (user attribution + RBAC).
++	// Always forward the session's access token there. Covers both a cookie
++	// session (browser login) and a client-provided Bearer token (API path).
++	if session.AccessToken != "" {
++		setRequestHeader(req, "Authorization", "Bearer "+session.AccessToken)
++	}
+ 	if session.Email == "" {
+ 		rw.Header().Set("GAP-Auth", session.User)
+ 	} else {
+@@ -895,6 +902,16 @@ func (p *OAuthProxy) CheckBasicAuth(req *http.Request) (*providers.SessionState,
+ }
+ 
+ func (p *OAuthProxy) CheckRequestAuth(req *http.Request) (*providers.SessionState, error) {
++	// In-kind: accept a raw client Bearer token directly as the session's access
++	// token. The downstream kube-rbac-proxy performs the real K8s TokenReview
++	// (user attribution + RBAC), so we only need to carry the token through.
++	// This avoids the openshift provider's ValidateRequest (which needs a
++	// -openshift-sar path match + a registered K8s authenticator).
++	if auth := req.Header.Get("Authorization"); auth != "" {
++		if parts := strings.SplitN(auth, " ", 2); len(parts) == 2 && parts[0] == "Bearer" && parts[1] != "" {
++			return &providers.SessionState{User: "bearer", AccessToken: parts[1]}, nil
++		}
++	}
+ 	// handle advanced validation
+ 	return p.provider.ValidateRequest(req)
+ }

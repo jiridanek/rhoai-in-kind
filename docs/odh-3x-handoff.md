@@ -267,3 +267,77 @@ Would hit the **same** dashboard-auth gap (cypress e2e workbenches specs use `cy
 The 3.x in-kind probe needs a browser-OAuth path in front of the dashboard's kube-rbac-proxy: either (a) add an OAuth redirect layer (analogous to 2.x origin-oauth-proxy) that 302s unauthenticated browsers to the fake oauth-server, logs in, and issues a K8s token the kube-rbac-proxy accepts, or (b) configure the dashboard to serve the SPA unauthenticated so the React app drives token acquisition. Option (a) is the closer analog to the proven 2.x flow. Until then, API-token-based tests (the committed notebook-sidecar spike) pass, but browser-login-based tests (elyra, cypress e2e) fail at login.
 
 > Note: the istio-system namespace label (gateway-routing fix) is applied only to the live cluster so far; persist it into deploy.py and re-verify after any redeploy.
+
+## Browser-auth resolution: patched oauth-proxy sidecar (supersedes "Remaining substrate work")
+
+Option (a) was implemented: a patched openshift/oauth-proxy sidecar in front of the dashboard's kube-rbac-proxy. The 3.x dashboard pod now has an extra oauth-proxy container (port 8443, upstream http://localhost:8446 = insecure kube-rbac-proxy).
+
+### Source patches (/tmp/kf3x/oauth-proxy-src, upstream github.com/openshift/oauth-proxy @ bb5169e)
+
+1. oauthproxy.go — CheckRequestAuth accepts raw Bearer tokens; Authenticate forwards Authorization: Bearer <token> to the upstream (kube-rbac-proxy does token review). This makes the proxy's session cookie (issued after browser login) work for API + websocket traffic.
+2. http.go — ServeHTTPS forces NextProtos = ["http/1.1"]. Default oscrypto.SecureTLSConfig sets [h2, http/1.1]; if ALPN negotiates h2, the Go h2 response writer is not an http.Hijacker and every /wss/k8s/* websocket upgrade fails with 500.
+3. logging_handler.go — the responseLogger (the -request-logging wrapper) now implements Hijack() delegating to the wrapped writer. wsutil.go:137 checks w.(http.Hijacker) and answers 500 "Not a hijacker?" (16-byte body) without it.
+
+Build: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build + local.Dockerfile (FROM scratch) -> quay.io/jdanek/origin-oauth-proxy:patched -> podman push -> kind load -> rollout restart deploy/rhods-dashboard.
+
+### Final oauth-proxy args (persisted by /tmp/kf3x/patch-dashboard.py)
+
+    -provider openshift -skip-provider-button
+    -login-url https://oauth-server.127.0.0.1.sslip.io/oauth/authorize
+    -upstream http://localhost:8446
+    -redeem-url http://oauth-server.127.0.0.1.sslip.io/token
+    -pass-access-token -request-logging
+    -client-id dsh-oauth-client -client-secret dsh-oauth-secret
+    -cookie-secret 0123456789abcdef0123456789abcdef
+    -https-address 0.0.0.0:8443 -tls-cert ... -tls-key ...
+
+Key gotchas:
+
+- -redeem-url is mandatory. Without it the openshift provider discovers the token endpoint via kubernetes.default.svc/.well-known/oauth-authorization-server -> vanilla k8s API -> 403 for system:anonymous -> login callback 500 "error redeeming code". In-cluster, the http port 80 via the istio gateway works; https fails (gateway in-cluster cert "not valid for any names").
+- -login-url points at the worktree oauth-server (components/oauth-server/oauth-server.go, image quay.io/jdanek/oauth-server:latest) which serves the login page, a /oauth/authorize alias, and the /token endpoint. Any username with password "password" (admin-user, ldap-admin1/2, ldap-user1/2/9).
+- Fixed -cookie-secret so signed in-memory session cookies survive pod restarts.
+
+Verified end-to-end by /tmp/kf3x/e2e-full.sh (fresh cookie jar): dashboard 302 -> login page 200 -> POST creds -> 307 callback w/ code -> redeem -> 302 -> / 200, REST /api/k8s/... 200, and /wss/k8s/... 101 Switching Protocols with live {"type":"ADDED",...} watch frames. Chrome (real browser) shows the Projects page with no "issue fetching projects" banner.
+
+## Cypress green: testWorkbenchImages.cy.ts (v3.3.1-odh)
+
+Invocation (verified passing, 1 passing):
+
+    cd /tmp/odh-dashboard-3x/packages/cypress
+    PATH="/tmp/kf3x/ocwrap:$PATH" KUBECONFIG=/tmp/rhoai-odh3x/.kubeconfig-probe
+    CYPRESS_CACHE_FOLDER=/tmp/cypress-cache MODULE_FEDERATION_CONFIG="[]"
+    BASE_URL="https://rhods-dashboard.127.0.0.1.sslip.io"
+    ADMIN_USER_AUTH_TYPE="adm-auth" ADMIN_USER_USERNAME="admin-user" ADMIN_USER_PASSWORD="password"
+    TEST_USER_3_AUTH_TYPE="ldap-provider-qe" TEST_USER_3_USERNAME="ldap-user2" TEST_USER_3_PASSWORD="password"
+    CY_TEST_CONFIG=/tmp/kf3x/cy-test-config.yaml CY_RETRY=0
+    CYPRESS_DEFAULT_COMMAND_TIMEOUT=60000
+    node ../../node_modules/cypress/bin/cypress run -b chrome --spec "cypress/tests/e2e/dataScienceProjects/workbenches/testWorkbenchImages.cy.ts"
+
+testConfig.ts maps ADMIN_USER_* -> HTPASSWD_CLUSTER_ADMIN_USER, TEST_USER_3_* -> LDAP_CONTRIBUTOR_USER; APPLICATIONS_NAMESPACE comes only from the CY_TEST_CONFIG YAML, which must also contain S3 BUCKET_1..3 keys or config crashes.
+
+Three fixes were required beyond the auth work:
+
+1. oc wrapper must emit clean stdout. projectChecker.verifyOpenShiftProjectExists compares "oc get project X -o name" stdout exactly against "project.project.openshift.io/X" — any extra line on stdout (e.g. a wrapper trace header) makes every verify fail with "Expected project ... to exist". The wrapper at /tmp/kf3x/ocwrap/oc logs everything to /tmp/kf3x/oc-trace.log and passes through raw oc stdout/stderr + exit code. (Also: create a wrapper via a file write, not a bash heredoc — the heredoc expands $* / $(...) at creation time.)
+2. CYPRESS_DEFAULT_COMMAND_TIMEOUT=60000. Cold app start in headless Chrome on this host takes ~47s (document load -> projects/hardwareprofiles data); the 10s default made findSideBar (#page-sidebar) time out on the very first step. Warm-profile runs start in ~1s, which is why isolated debug specs looked fine.
+3. s2i-minimal-notebook ImageStream was missing the opendatahub.io/notebook-image=true label that the spawner uses to filter images — the test found 10 images via oc but the UI listed only 9. Fixed with "kubectl label imagestream s2i-minimal-notebook -n redhat-ods-applications opendatahub.io/notebook-image=true --overwrite". (The worktree manifest components/08-workbenches/minimal.yaml already carries the label; the live object came from a different/newer source. The other 9 notebook streams all had it.)
+
+## HardwareProfile (the Elyra robot blocker)
+
+- CRD hardwareprofiles.infrastructure.opendatahub.io + a default-profile in redhat-ods-applications — worktree file components/hardware-profile/crd.yaml, applied to the cluster.
+- The profile's spec.displayName (and the opendatahub.io/display-name annotation) MUST be "default-profile", not "CPU": JupyterHubSpawner.robot "Select Hardware Profile" (release-3.3, ~line 111-116) compares the disabled dropdown button text (= display-name) against the profile NAME passed by the test when only one profile exists. Run 1 failed with "Expected hardware profile 'default-profile' but found 'CPU'" because of the mismatch; run 2 passed after the rename (live object fixed via kubectl replace, manifest updated in the worktree).
+- HardwareProfileSelect.tsx:255-257 renders a skeleton while the profile list is empty; with default-profile present the "Deployment size" dropdown renders "CPU".
+- ods-ci Workbenches.resource (release-3.3) waits ~10s for //button[@data-testid="hardware-profile-select"] after "Deployment size" — this is what the Elyra run was failing on before the CRD/profile were applied.
+
+## Elyra robot (ods-ci release-3.3)
+
+Run env (all under /tmp/ods-ci-3x/ods_ci): KUBECONFIG=/tmp/rhoai-odh3x/.kubeconfig-probe, PATH with /tmp/chromedriver/chromedriver-mac-arm64, SE_MANAGER_PATH=/tmp/kf3x/fake-selenium-manager (real selenium-manager panics in the sandbox), KUBECTL_REMOTE_COMMAND_WEBSOCKETS=false, DBUS_SESSION_BUS_ADDRESS=/dev/null, POETRY_VIRTUALENVS_IN_PROJECT=true, rm -rf /tmp/chrome-profile first (Chrome can't create a default profile under the sandbox; the test-variables BROWSER options carry --user-data-dir=/tmp/chrome-profile).
+
+## Elyra robot workbench-status blocker (run 2 -> run 3)
+
+Run 2 got past login (ldap-user2, oauth flow), project creation, workbench creation and hardware-profile selection, then failed in "Workbench Status Should Be": the workbench never showed RUNNING within the test's 300s wait. Root cause (reproduced manually by creating a bare Notebook CR in a scratch project):
+
+- The odh-notebook-controller (quay.io/opendatahub/odh-notebook-controller:v1.10.0-15) creates a StatefulSet with the jupyter container + a kube-rbac-proxy auth sidecar. Both images are pullable anonymously from quay.io (no internal registry: the webhook resolves the image from the ImageStream tag status dockerImageReference, e.g. quay.io/opendatahub/odh-workbench-jupyter-datascience-cpu-py312-ubi9:2025b-v1.36).
+- The jupyter container cold start on this QEMU-emulated node takes ~30-50s, but the dashboard's notebook probes (frontend/src/api/k8s/notebooks.ts baseResource: liveness/readiness initialDelaySeconds=10, periodSeconds=5, failureThreshold=3) kill it after ~25s. It crash-loops (exit 137/143) several times until one cold start happens to finish inside the grace window, then the pod is 2/2 and the Notebook CR goes Ready (~5m16s end-to-end in the manual repro, lighter load than the robot run).
+- The "Failed to wait for image pull secret / pull secret not mounted" log line from the controller is a benign race at creation time (it clears once the pod exists); the "policy openshift-like-volume-mounts fail: mutation is not applied" pod event is likewise pre-existing noise, not the blocker.
+- Fix for in-kind: in /tmp/ods-ci-3x (ods-ci release-3.3 worktree) 0502__ide_elyra.robot Smoke test now passes workbench_timeout=900s to the test keyword (Start Workbench -> Wait Until Workbench Is Started) and its [Timeout] was raised 10m -> 20m to keep the overall budget above the worst-case start + pipeline run. No cluster-side change: on real (native) clusters the notebook starts inside the default probes and the stock timeouts hold.
+

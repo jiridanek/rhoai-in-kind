@@ -1,0 +1,66 @@
+# HardwareProfile CRD for the v3.x dashboard (group infrastructure.opendatahub.io/v1).
+# The v3.3 dashboard expects this CRD (frontend/src/api/models/odh.ts: HardwareProfileModel).
+# In-kind does not run the DSC operator that normally installs it, so we install it here.
+# The schema is intentionally permissive: the dashboard only reads metadata.annotations,
+# spec.identifiers and spec.scheduling.type.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: hardwareprofiles.infrastructure.opendatahub.io
+  labels:
+    app: rhods-dashboard
+    app.kubernetes.io/part-of: rhods-dashboard
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    kind: HardwareProfile
+    listKind: HardwareProfileList
+    plural: hardwareprofiles
+    singular: hardwareprofile
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+---
+# Default hardware profile, matching standard RHOAI where the dashboard ships a
+# `default-profile` in the dashboard (applications) namespace.
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: default-profile
+  namespace: redhat-ods-applications
+  annotations:
+    # displayName must equal the profile name: ods-ci robot tests compare the
+    # disabled single-profile dropdown button text against the profile name
+    # (JupyterHubSpawner.robot: "Select Hardware Profile default-profile").
+    opendatahub.io/display-name: default-profile
+    opendatahub.io/description: Default CPU hardware profile
+    opendatahub.io/disabled: "false"
+    opendatahub.io/dashboard-feature-visibility: "[\"workbench\",\"model-serving\"]"
+spec:
+  displayName: default-profile
+  enabled: true
+  identifiers:
+    - defaultCount: 1
+      displayName: CPU
+      identifier: cpu
+      maxCount: 4
+      minCount: 1
+      resourceType: CPU
+    - defaultCount: 2Gi
+      displayName: Memory
+      identifier: memory
+      maxCount: 8Gi
+      minCount: 1Gi
+      resourceType: Memory

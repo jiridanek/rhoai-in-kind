@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -36,6 +37,10 @@ func init() {
 func main() {
 	flag.Parse()
 	http.HandleFunc("/auth", handleAuth)
+	// /oauth/authorize mirrors the standard RHOAI authorization_endpoint path
+	// (https://oauth-openshift.apps.<cluster>/oauth/authorize) so e2e login
+	// flows keyed off that URL pattern work in-kind.
+	http.HandleFunc("/oauth/authorize", handleAuth)
 	http.HandleFunc("/token", handleToken)
 	http.HandleFunc("/userinfo", handleUserInfo)
 	http.HandleFunc("/review", handleReview)
@@ -239,8 +244,47 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 // reviewURL = getKubeAPIURLWithPath("/apis/authorization.openshift.io/v1/subjectaccessreviews")
 func handleReview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_, err := w.Write([]byte("{\"allowed\":true}"))
-	if err != nil {
+	// Return the OpenShift TokenReview shape (status.authResult.user + .allowed)
+	// so the oauth-proxy (openshift provider) can authenticate Bearer tokens.
+	// Decode the K8s SA JWT to get the real user (sub + serviceAccount.uid claims).
+	// The dashboard kube-rbac-proxy still re-validates the token for real attribution.
+	username := "system:serviceaccount:oauth-server:unknown"
+	uid := "unknown"
+	auth := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(auth, "Bearer ")
+	if parts := strings.Split(token, "."); len(parts) == 3 {
+		if payload, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
+			var claims struct {
+				Sub string `json:"sub"`
+				Kubernetes struct {
+					ServiceAccount struct {
+						UID string `json:"uid"`
+					} `json:"serviceAccount"`
+				} `json:"kubernetes.io"`
+			}
+			if json.Unmarshal(payload, &claims) == nil {
+				if claims.Sub != "" {
+					username = claims.Sub
+				}
+				if claims.Kubernetes.ServiceAccount.UID != "" {
+					uid = claims.Kubernetes.ServiceAccount.UID
+				}
+			}
+		}
+	}
+	resp := map[string]interface{}{
+		"status": map[string]interface{}{
+			"authResult": map[string]interface{}{
+				"user": map[string]interface{}{
+					"name":   username,
+					"uid":    uid,
+					"groups": []string{"system:authenticated"},
+				},
+				"allowed": true,
+			},
+		},
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		panic(err)
 	}
 }

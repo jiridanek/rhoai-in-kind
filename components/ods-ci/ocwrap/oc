@@ -1,0 +1,27 @@
+#!/bin/bash
+# Tracing wrapper for `oc` used by the ods-ci robot / cypress suites in in-kind.
+#
+# CRITICAL INVARIANT: stdout/stderr must be the raw oc output, byte for byte.
+# ods-ci compares command output exactly (e.g. projectChecker.verifyOpenShiftProjectExists
+# checks `oc get project X -o name` == "project.project.openshift.io/X"); any wrapper
+# noise on stdout (banner, prompt, trace header) breaks every verify.
+# All trace output goes to $OC_TRACE_LOG (file), never to stdout.
+#
+# Usage: put this directory first in PATH (it contains `oc` and the real binary as `oc.real`),
+# or set OC_REAL=/path/to/oc and run this file directly.
+OC_REAL="${OC_REAL:-$(dirname "$0")/oc.real}"
+OC_TRACE_LOG="${OC_TRACE_LOG:-/tmp/oc-trace.log}"
+OUT=$(mktemp); ERR=$(mktemp)
+"$OC_REAL" "$@" > "$OUT" 2> "$ERR"
+code=$?
+{
+  echo "=== $(date +%H:%M:%S) oc $*"
+  echo "exit=$code"
+  echo "stdout: $(cat "$OUT")"
+  echo "stderr: $(cat "$ERR")"
+  echo
+} >> "$OC_TRACE_LOG"
+cat "$OUT"
+cat "$ERR" >&2
+rm -f "$OUT" "$ERR"
+exit $code
