@@ -245,6 +245,13 @@ def _deploy(workbench_branch: str) -> None:
 
     with gha_log_group("Deploy fake CRDs"):
         sh("kubectl apply -k components/crds")
+        # The batch above mixes CRDs and CRs (e.g. the Authentication CR in auth.yaml). kubectl
+        # orders the CRD first but applies the CR in the same pass, before the apiextensions
+        # controller has registered the resource type -> "resource mapping not found" (observed
+        # on a fresh local cluster; the CI race in issue #82 is the same class). Now that the
+        # CRDs are Established, re-apply the batch so the CRs land (idempotent).
+        sh("timeout 60s bash -c 'until kubectl wait --for=condition=Established crd/authentications.config.openshift.io --timeout=5s 2>/dev/null; do sleep 1; done'")
+        sh("kubectl apply -k components/crds")
         # Establishing a CRD is asynchronous: `kubectl apply` returning just means the object was
         # accepted, not that the API server's discovery/RESTMapper already knows the resource type.
         # Querying too soon (e.g. the imagestreams clusterrole creation below) can 404 - confirmed
@@ -620,6 +627,11 @@ def _deploy(workbench_branch: str) -> None:
             # cypress e2e users
             # foo-user,
             "contributor-username", "adminuser",
+            # the plain "admin" login user used by cypress run-cy.sh (ADMIN_USER) and the
+            # robot tests: the fake oauth-server mints a token for SA oauth-server:<user>
+            # on redeem and PANICS with "serviceaccounts ... not found" (connection reset ->
+            # gateway 503 -> login callback 500) when the SA is missing.
+            "admin",
         ]:
             sh(f"kubectl create serviceaccount -n oauth-server {username} --dry-run=client -o yaml | kubectl apply -f -")
             # the full SA name is something like `system:serviceaccount:oauth-server:ldap-user2`
@@ -633,10 +645,30 @@ def _deploy(workbench_branch: str) -> None:
         # wait for webpage availability
         tf.defer(None, lambda _: sh('''timeout 60s bash -c 'while ! curl -k "https://rhods-dashboard.127.0.0.1.sslip.io/"; do sleep 2; done' '''))
 
+    with gha_log_group("Patch dashboard with oauth-proxy sidecar (browser login)"):
+        # 3.x browser login: the stock 3.x dashboard deployment has no oauth-proxy sidecar,
+        # so unauthenticated browsers get a 401 text/plain from kube-rbac-proxy instead of a
+        # 302 to the login page (cypress cy.visit() then fails with "responses must have
+        # content-type: text/html"). patch-dashboard.py rewrites the deployment: moves the
+        # kube-rbac-proxy to 8445/8446 and adds the patched origin-oauth-proxy on 8443 in
+        # front of it (browser OAuth via the fake oauth-server; see the module docstring).
+        # This step used to be manual-only - a fresh cluster without it cannot log in.
+        sh(f"kubectl wait --for=condition=Available deployment -l app=rhods-dashboard -n {REDHAT_ODS_APPLICATIONS} --timeout=300s")
+        out = sh("python3 components/oauth-server/patch-dashboard.py", capture_output=True).stdout
+        apply_path = next(line.split("saved ", 1)[1].strip() for line in out.splitlines() if line.startswith("saved "))
+        sh(f"kubectl apply -f {apply_path}")
+        sh(f"kubectl rollout status deploy/rhods-dashboard -n {REDHAT_ODS_APPLICATIONS} --timeout=180s")
+
     with gha_log_group("Set fake DSC and DSCI"):
         sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side")
         # need status for dashboard resource otherwise notebook controller will not fill dashboard link for dspa secret
         sh("kubectl apply -f components/07-dsc-dsci.yaml --server-side --subresource=status || true")
+
+    with gha_log_group("Set default HardwareProfile"):
+        # the 3.x spawner needs an enabled HardwareProfile to fill its resource form
+        # (see components/12-hardware-profile.yaml); without one the Create button
+        # stays disabled forever
+        sh("kubectl apply -f components/12-hardware-profile.yaml --server-side")
 
     with gha_log_group("Check storage class"):
         # kind already creates its own default StorageClass at cluster creation time (named

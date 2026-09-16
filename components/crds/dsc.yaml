@@ -23,3 +23,12 @@ spec:
           x-kubernetes-preserve-unknown-fields: true
       served: true
       storage: true
+    # the 3.x dashboard backend lists the DSC at v2 (backend/src/utils/dsc.ts);
+    # without this version the fetch 404s and the project detail page 503s
+    - name: v2
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      served: true
+      storage: false

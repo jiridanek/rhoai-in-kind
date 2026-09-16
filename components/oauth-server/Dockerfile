@@ -2,7 +2,7 @@
 # podman push quay.io/jdanek/oauth-server:latest
 # kind load docker-image quay.io/jdanek/oauth-server:latest
 
-FROM docker.io/library/golang:1.24 as builder
+FROM docker.io/library/golang:1.27 as builder
 COPY go.mod go.sum ./
 RUN go mod download
 COPY oauth-server.go tls.go ./

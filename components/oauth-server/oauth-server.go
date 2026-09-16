@@ -142,6 +142,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 <button onclick="">Log in with OpenShift</button>
 <p>Log in with</p>
 <ul>
+<li><a href="" role="link" name="htpasswd">htpasswd</a></li>
 <li><a href="" role="link" name="adm-auth">adm-auth</a></li>
 <li><a href="" role="link" name="contributor-auth">contributor-auth</a></li>
 <li><a href="" role="link" name="ldap-provider-qe">ldap-provider-qe</a></li>

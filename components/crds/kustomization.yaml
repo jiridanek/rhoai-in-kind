@@ -13,6 +13,7 @@ resources:
   - dsci.yaml
   - imagestream.yaml
   - buildconfig.yaml
+  - hardwareprofile.yaml
   - clusterserviceversion.yaml
   - components.platform.opendatahub.io_dashboards.yaml
 #  - servingruntime.yaml

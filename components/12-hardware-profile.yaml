@@ -1,0 +1,32 @@
+# Default HardwareProfile: the 3.x dashboard spawner requires at least one enabled
+# HardwareProfile to populate its resource form (frontend useHardwareProfileConfig
+# picks the first enabled profile for new workbenches; with none, the Create button
+# stays disabled because isHardwareProfileConfigValid returns false for empty form data).
+# On real 3.x clusters the ODH operator creates this; the in-kind probe does not run
+# the operator, so we provide it here.
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: default
+  namespace: redhat-ods-applications
+  annotations:
+    platform.opendatahub.io/default: "true"
+  labels:
+    platform.opendatahub.io/part-of: dashboard
+spec:
+  identifiers:
+    - displayName: CPU
+      identifier: cpu
+      # CPU counts must be integers - the frontend validateProfileWarning rejects
+      # decimal CPU values, which would filter the profile out and keep the
+      # spawner Create button disabled
+      minCount: 1
+      maxCount: 16
+      defaultCount: 1
+      resourceType: CPU
+    - displayName: Memory
+      identifier: memory
+      minCount: 1Gi
+      maxCount: 32Gi
+      defaultCount: 1Gi
+      resourceType: Memory

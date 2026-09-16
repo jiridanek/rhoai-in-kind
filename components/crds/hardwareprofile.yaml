@@ -1,0 +1,24 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    crd/fake: "true"
+  name: hardwareprofiles.infrastructure.opendatahub.io
+spec:
+  group: infrastructure.opendatahub.io
+  names:
+    plural: hardwareprofiles
+    singular: hardwareprofile
+    shortNames:
+      - hwp
+    kind: HardwareProfile
+    listKind: HardwareProfileList
+  scope: Namespaced
+  versions:
+    - name: v1
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      served: true
+      storage: true

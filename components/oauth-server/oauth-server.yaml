@@ -47,7 +47,7 @@ spec:
     spec:
       containers:
         - name: oauth-server
-          image: quay.io/jdanek/oauth-server:latest
+          image: quay.io/jdanek/oauth-server:htpasswd-link
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

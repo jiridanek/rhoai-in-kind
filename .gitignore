@@ -23,3 +23,18 @@ go.work.sum
 
 # env file
 .env
+
+# local in-kind artifacts (session-generated, not source)
+.kubeconfig-probe
+ca.crt
+ca.key
+combined-ca-bundle.crt
+components/__pycache__/
+components/oauth-server/__pycache__/
+components/oauth-server/oauth-server
+components/opendatahub-tests/nginx_certs/
+istio-1.26.2/
+macos-native-ca-bundle.pem
+my-cluster-ca-issuer.yaml
+sslip-certificate.yaml
+src/rhoai_in_kind/__pycache__/
