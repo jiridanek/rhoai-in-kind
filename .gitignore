@@ -38,3 +38,5 @@ macos-native-ca-bundle.pem
 my-cluster-ca-issuer.yaml
 sslip-certificate.yaml
 src/rhoai_in_kind/__pycache__/
+.venv/
+.venv/

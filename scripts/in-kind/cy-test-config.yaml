@@ -1,0 +1,16 @@
+APPLICATIONS_NAMESPACE: redhat-ods-applications
+S3:
+  BUCKET_1:
+    NAME: ""
+    REGION: ""
+    ENDPOINT: ""
+  BUCKET_2:
+    NAME: ""
+    REGION: ""
+    ENDPOINT: ""
+  BUCKET_3:
+    NAME: ""
+    REGION: ""
+    ENDPOINT: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""

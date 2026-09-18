@@ -1100,10 +1100,12 @@ Run 10: PASS (1 passing, 1m10s).
 
     (run-cy.sh: USERNAME/PASSWORD admin/password, frontend .env.cypress ADMIN_USER_AUTH_TYPE=htpasswd, KUBECONFIG probe for cy.exec oc calls)
 
-### Uncommitted changes this session
+  All of the /tmp/kf3x helpers referenced above are saved in the repo: scripts/in-kind/ (run-cy.sh, make-probe-kc.py, kerneltest.yaml + kready3.py + wchancmd.sh Rosetta-deadlock probe, fulllogin2.sh, cy-test-config.yaml). The two local odh-dashboard-3x edits (no .git in that tree, so they cannot be diffed in place) are re-applied from patches/apply-odh-dashboard-3x-local-patches.py after any fresh dashboard checkout.
 
-- rhoai-odh3x: components/deploy.py (CRD race re-apply fix; oauth-proxy sidecar step; "admin" in oauth user list; "Set default HardwareProfile" group), components/crds/dsc.yaml (+v2), components/crds/hardwareprofile.yaml (new), components/crds/kustomization.yaml (+hardwareprofile), components/12-hardware-profile.yaml (new), components/oauth-server/{oauth-server.go (htpasswd link), Dockerfile (golang 1.27), oauth-server.yaml (:htpasswd-link)}, docs/odh-3x-handoff.md (this session).
-- ods-ci-3x: tests/Tests/0500__ide/0502__ide_elyra.robot + 4 resources (from the earlier span; still uncommitted).
+### Changes this session (committed)
+
+- rhoai-odh3x c561c8e: components/deploy.py (CRD race re-apply fix; oauth-proxy sidecar step; "admin" in oauth user list; "Set default HardwareProfile" group), components/crds/dsc.yaml (+v2), components/crds/hardwareprofile.yaml (new), components/crds/kustomization.yaml (+hardwareprofile), components/12-hardware-profile.yaml (new), components/oauth-server/{oauth-server.go (htpasswd link), Dockerfile (golang 1.27), oauth-server.yaml (:htpasswd-link)}, docs/odh-3x-handoff.md (this session). Follow-up commit adds scripts/in-kind/ (saved /tmp/kf3x helpers) + patches/ (odh-dashboard-3x local-patch re-apply script).
+- ods-ci-3x 9f44c984: tests/Tests/0500__ide/0502__ide_elyra.robot + 5 resources.
 - odh-dashboard-3x (local only, do not commit): packages/cypress/cypress/utils/discoverTestPatterns.ts try/catch -> [], testWorkbenchStatus.cy.ts timeout 120000 -> 600000.
 
 ### Open
