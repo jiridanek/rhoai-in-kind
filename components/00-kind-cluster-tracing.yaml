@@ -1,0 +1,53 @@
+# Opt-in variant of 00-kind-cluster.yaml that also enables kube-apiserver's native OTel
+# tracing (see components/13-apiserver-tracing/apiserver-tracing.yaml for the endpoint and
+# sampling rate). Not used by CI or the default local flow - point a local OTLP collector
+# (e.g. the Aspire dashboard, see docs/kubernetes-openshift-version-matrix.md's sibling
+# tracing notes) at the endpoint in that file, then:
+#
+#   kind create cluster --config components/00-kind-cluster-tracing.yaml
+#
+# https://kind.sigs.k8s.io/docs/user/configuration/
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
+nodes:
+  - role: control-plane
+    # Default kubelet behavior is serializeImagePulls: true (one image pull at a time,
+    # node-wide, FIFO across every pod) - kind doesn't override this either. That queue isn't
+    # priority-aware, so a background image-puller DaemonSet's large pulls queued ahead of
+    # something else's small, normally-instant pull can starve it for the whole duration
+    # rather than actually contending for bandwidth (see .github/workflows's image-puller
+    # DaemonSet steps and the cert-manager starvation they caused before being reordered).
+    # Allow a few pulls in parallel so unrelated small pulls aren't stuck behind one big queue.
+    kubeadmConfigPatches:
+      - |
+        kind: KubeletConfiguration
+        serializeImagePulls: false
+        maxParallelImagePulls: 6
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            tracing-config-file: /etc/kubernetes/apiserver-tracing.yaml
+          extraVolumes:
+            - name: apiserver-tracing-config
+              hostPath: /etc/kubernetes/apiserver-tracing.yaml
+              mountPath: /etc/kubernetes/apiserver-tracing.yaml
+              readOnly: true
+              pathType: File
+    extraMounts:
+      - hostPath: components/13-apiserver-tracing/apiserver-tracing.yaml
+        containerPath: /etc/kubernetes/apiserver-tracing.yaml
+        readOnly: true
+    extraPortMappings:
+      - containerPort: 30207
+        hostPort: 15021
+        protocol: TCP
+      - containerPort: 32751
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 30730
+        hostPort: 443
+        protocol: TCP

@@ -1,0 +1,24 @@
+# https://kubernetes.io/docs/concepts/cluster-administration/system-traces/
+# Mounted into the control-plane node and referenced by kube-apiserver's --tracing-config-file
+# (see components/00-kind-cluster-tracing.yaml). Not used by the default
+# components/00-kind-cluster.yaml or CI - opt-in for local debugging only, since CI has no OTLP
+# collector listening.
+apiVersion: apiserver.config.k8s.io/v1beta1
+kind: TracingConfiguration
+# Points at components/14-otel-collector/manifests.yaml's otel-collector-gateway Service by its
+# pinned ClusterIP (10.96.200.200), not a DNS name: kube-apiserver's static pod runs in the
+# node's own network namespace with the node's own /etc/resolv.conf, not CoreDNS (confirmed
+# live: `podman exec kind-control-plane getent hosts kubernetes.default.svc.cluster.local`
+# fails), so a *.svc.cluster.local name wouldn't resolve here even though the ClusterIP itself
+# is reachable (kube-proxy's iptables NAT applies node-wide). The gateway applies a
+# tail_sampling processor before forwarding to Aspire - kube-apiserver at 100% sampling with no
+# per-path filtering of its own floods the viewer with routine control-loop noise (confirmed
+# live: Kyverno's controllers alone generate a constant stream of single-span
+# authentication/lease-renewal/subjectaccessreviews traces). Routing through the same gateway
+# instance that Kyverno's own tracing also uses matters because the two already share real
+# distributed traces (e.g. a lease-renewal call: "kyverno-admission-controller: POST" root span
+# with an "apiserver: PUT .../leases/{:name}" child) - tail_sampling's per-trace-ID decision
+# needs to see every participant's spans to stay consistent, not just apiserver's.
+endpoint: "10.96.200.200:4317"
+# 100% sampling here is fine now that the gateway does the actual filtering - see above.
+samplingRatePerMillion: 1000000
